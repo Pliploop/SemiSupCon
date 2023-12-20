@@ -1,12 +1,14 @@
+import torch
 import torch.nn as nn
+from .model import Model
 
 
-class SampleCNN(nn.Module):
+class SampleCNNXL(nn.Module):
     def __init__(self,
                  strides=[3, 3, 3, 3, 3, 3, 3, 3, 3],
                  supervised=False, out_dim = 128):
-        super(SampleCNN, self).__init__()
-
+        super(SampleCNNXL, self).__init__()
+        
         self.strides = strides
         self.supervised = supervised
         self.sequential = [
@@ -22,11 +24,11 @@ class SampleCNN(nn.Module):
             [128, 128],
             [128, 256],
             [256, 256],
-            [256, 256],
-            [256, 256],
-            [256, 256],
-            [256, 256],
             [256, 512],
+            [512, 512],
+            [512, 1024],
+            [1024, 1024],
+            [1024, 2048],
         ]
 
         assert len(self.hidden) == len(
@@ -45,8 +47,8 @@ class SampleCNN(nn.Module):
         # 1 x 512
         self.sequential.append(
             nn.Sequential(
-                nn.Conv1d(512, 512, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm1d(512),
+                nn.Conv1d(2048, 2048, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm1d(2048),
                 nn.ReLU(),
             )
         )
@@ -55,7 +57,7 @@ class SampleCNN(nn.Module):
 
         if self.supervised:
             self.dropout = nn.Dropout(0.5)
-        self.fc = nn.Linear(512, out_dim)
+        self.fc = nn.Linear(2048, out_dim)
 
     def forward(self, x):
         out = self.sequential(x)
