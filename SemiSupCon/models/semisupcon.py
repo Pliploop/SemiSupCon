@@ -4,6 +4,7 @@ import torch
 from torch import nn
 import matplotlib.pyplot as plt
 import wandb
+from torch import optim
 
 class SemiSupCon(pl.LightningModule):
     
@@ -54,10 +55,20 @@ class SemiSupCon(pl.LightningModule):
         
         labeled = x['labels'].sum(dim=-1) > 0
         
-        semisl_loss = self.logging(out_,labeled)
+        semisl_loss = self.loss(out_['projected'],out_['semisl_contrastive_matrix'])
+        
+        self.logging(out_,labeled)
+        
         return semisl_loss
     
     
+    def validation_step(self,batch,batch_idx):
+        x = batch
+        out_ = self(x)
+        
+        semisl_loss = self.loss(out_['projected'],out_['semisl_contrastive_matrix'])
+        
+        return semisl_loss
     
     def logging(self,out_, labeled): 
         
@@ -87,8 +98,6 @@ class SemiSupCon(pl.LightningModule):
                 self.logger.log_image(
                     'target_contrastive_matrix', [wandb.Image(fig)])
                 plt.close(fig)
-                
-        return semisl_loss
     
     def log_similarity(self,similarity,name):
         fig, ax = plt.subplots(1, 1)
@@ -105,12 +114,12 @@ class SemiSupCon(pl.LightningModule):
         ## returns a matrix of shape [B*N_augmentations,B*N_augmentations] with 1s where the labels are the same
         ## and 0s where the labels are different
         
-        ssl_contrastive_matrix = self.get_default_contrastive_matrix(B,N,T,device = labels.device)
-        sl_contrastive_matrix = self.get_sl_contrastive_matrix(B,N,T,labels)
+        ssl_contrastive_matrix = self.get_ssl_contrastive_matrix(B,N,T,device = labels.device)
+        sl_contrastive_matrix = self.get_sl_contrastive_matrix(B,N,T,labels, device = labels.device)
         
-        # new_contrastive_matrix = torch.zeros(B*(N_ssl+N_sl),B*(N_ssl+N_sl),device = labels.device)
         # this is if we want to have a different N_aug for ssl and sl but it makes the code more complicated
-        # new_contrastive_matrix[:B*N_ssl,:B*N_ssl] = ssl_contrastive_matrix
+        # new_contrastive_matrix = torch.zeros(B*(N_ssl+N_sl),B*(N_ssl+N_sl),device = labels.device)
+         # new_contrastive_matrix[:B*N_ssl,:B*N_ssl] = ssl_contrastive_matrix
         # new_contrastive_matrix[B*N_ssl:,B*N_ssl:] = sl_contrastive_matrix
         
         new_contrastive_matrix = ((ssl_contrastive_matrix + sl_contrastive_matrix) > 0).int()
@@ -118,7 +127,7 @@ class SemiSupCon(pl.LightningModule):
         return new_contrastive_matrix,ssl_contrastive_matrix, sl_contrastive_matrix
         
         
-    def get_default_contrastive_matrix(self,B,N,device):
+    def get_ssl_contrastive_matrix(self,B,N,device):
         
         contrastive_matrix = torch.zeros(B*N,B*N,device = device)
         indices = torch.arange(0, B * N, 1, device=device)
@@ -130,7 +139,7 @@ class SemiSupCon(pl.LightningModule):
 
         return contrastive_matrix
     
-    def get_sl_contrastive_matrix(self,B,N,labels):
+    def get_sl_contrastive_matrix(self,B,N,labels, device):
         
         ## labels is of shape [B,N_augmentations,n_classes]
         ## labels is a one_hot encoding of the labels
@@ -138,11 +147,9 @@ class SemiSupCon(pl.LightningModule):
         ## returns a matrix of shape [B*N_augmentations,B*N_augmentations] with 1s where the labels are the same
         ## and 0s where the labels are different
         
-        indices = torch.arange(0, B * N, 1, device=labels.device)
+        indices = torch.arange(0, B * N, 1, device=device)
         
         i_indices, j_indices = torch.meshgrid(indices, indices)
-        
-        
         
         # if the label is -1 then there is no corresponding class in the batch
         
@@ -159,4 +166,13 @@ class SemiSupCon(pl.LightningModule):
         contrastive_matrix = x.any(dim=-1).int()
         
         return contrastive_matrix
-        
+    
+    
+    def configure_optimizers(self):
+        if self.optimizer is None:
+            optimizer = optim.AdamW(
+                self.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
+        else:
+            optimizer = self.optimizer(self.parameters())
+            
+        return optimizer
