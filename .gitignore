@@ -75,10 +75,11 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
+Checkpoints
 
 # Jupyter Notebook
 .ipynb_checkpoints
-
+wandb
 # IPython
 profile_default/
 ipython_config.py

@@ -1,5 +1,6 @@
 
-from src.models.semisupcon import SemiSupCon
+from SemiSupCon.models.semisupcon import SemiSupCon
+from SemiSupCon.dataloading.datamodules import MixedDataModule
 from pytorch_lightning.cli import LightningCLI
 from pytorch_lightning.cli import SaveConfigCallback
 from pytorch_lightning import LightningDataModule, LightningModule, Trainer
@@ -36,29 +37,16 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
 
 class MyLightningCLI(LightningCLI):
     def add_arguments_to_parser(self, parser):
-        parser.link_arguments(
-            "model.encoder.init_args.n_codebooks", "model.decoder.init_args.n_codebooks")
-        parser.link_arguments("model.encoder.init_args.emebdding_size",
-                              "model.decoder.init_args.eùbedding_size")
-        parser.link_arguments("model.encoder.init_args.card",
-                              "model.decoder.init_args.card")
-        parser.link_arguments("model.encoder.init_args.embedding_behaviour",
-                              "model.decoder.init_args.embedding_behaviour")
-        parser.link_arguments("model.sequence_len",
-                              "model.encoder.init_args.sequence_len")
-        parser.link_arguments("model.sequence_len",
-                              "model.decoder.init_args.sequence_len")
-        parser.link_arguments("model.encodec.init_args.sample_rate","data.target_sample_rate")
         parser.add_argument("--log", default=False)
         parser.add_argument("--log_model", default=False)
-        parser.add_argument("--ckpt_path", default="MuMRVQ_checkpoints")
+        parser.add_argument("--ckpt_path", default="checkpoints")
         parser.add_argument("--resume_id", default=None)
         parser.add_argument("--resume_from_checkpoint", default=None)
 
 
 if __name__ == "__main__":
 
-    cli = MyLightningCLI(model_class=SemiSupCon, datamodule_class=None, seed_everything_default=123,
+    cli = MyLightningCLI(model_class=SemiSupCon, datamodule_class=MixedDataModule, seed_everything_default=123,
                          run=False, save_config_callback=LoggerSaveConfigCallback, save_config_kwargs={"overwrite": True},)
     
     cli.instantiate_classes()
@@ -79,4 +67,4 @@ if __name__ == "__main__":
     except:
         pass
 
-    # cli.trainer.fit(model=cli.model, datamodule=cli.datamodule, ckpt_path=cli.config.resume_from_checkpoint)
+    cli.trainer.fit(model=cli.model, datamodule=cli.datamodule, ckpt_path=cli.config.resume_from_checkpoint)

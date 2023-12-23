@@ -5,10 +5,12 @@ from torch import nn
 import matplotlib.pyplot as plt
 import wandb
 from torch import optim
+from pytorch_lightning.cli import OptimizerCallable
 
 class SemiSupCon(pl.LightningModule):
     
-    def __init__(self, encoder, temperature = 0.1):
+    def __init__(self, encoder, 
+        optimizer: OptimizerCallable = None, temperature = 0.1):
         super().__init__()
         self.loss = SSNTXent(temperature = temperature)
         self.encoder = encoder
@@ -18,6 +20,8 @@ class SemiSupCon(pl.LightningModule):
             nn.Linear(512, 128, bias=False),
         )
         
+        self.optimizer = optimizer
+        
         
     def freeze(self):
         self.freeze()
@@ -25,18 +29,23 @@ class SemiSupCon(pl.LightningModule):
         
     def forward(self,x):
         
-        wav = x['wav']
-        labels = x['labels']
+        if isinstance(x,dict):
+            wav = x['audio']
+            labels = x['labels']
+        else:
+            wav = x
+            labels = torch.zeros(wav.shape[0]*wav.shape[1],10)
         
         
         # x is of shape [B,N_augmentations,T]:
-        B, N_augmentations, T = wav.shape
+        B, N_augmentations,_, T = wav.shape
 
-        x = x.contiguous().view(-1,x.shape[-1]) ## [B*N_augmentations,T]
+        wav = wav.contiguous().view(-1,1,wav.shape[-1]) ## [B*N_augmentations,T]
+        labels = labels.contiguous().view(-1,labels.shape[-1]) ## [B*N_augmentations,n_classes]
         
         semisl_contrastive_matrix,ssl_contrastive_matrix, sl_contrastive_matrix = self.get_contrastive_matrices(B,N_augmentations,T,labels)
         
-        encoded = self.encoder(x)
+        encoded = self.encoder(wav)
         projected = self.proj_head(encoded)
         
         return {
@@ -48,14 +57,35 @@ class SemiSupCon(pl.LightningModule):
             'encoded':encoded
         }
         
+    def finetune_forward(self,x):
+        
+        if isinstance(x,dict):
+            wav = x['audio']
+            labels = x['labels']
+        else:
+            wav = x
+            labels = torch.zeros(wav.shape[0]*wav.shape[1],10)
+        
+        encoded = self.encoder(wav)
+        
+        return {
+            'encoded':encoded,
+            'labels':labels
+        }
+        
     def training_step(self, batch, batch_idx):
             
         x = batch
         out_ = self(x)
         
-        labeled = x['labels'].sum(dim=-1) > 0
+        labeled = batch['labeled']
+        labeled = labeled.contiguous().view(-1)
+        # invert the semi-supervised contrastive matrix
         
-        semisl_loss = self.loss(out_['projected'],out_['semisl_contrastive_matrix'])
+        positive_mask = out_['semisl_contrastive_matrix']
+        negative_mask = torch.ones_like(positive_mask)
+        
+        semisl_loss = self.loss(out_['projected'],positive_mask,negative_mask)
         
         self.logging(out_,labeled)
         
@@ -66,34 +96,44 @@ class SemiSupCon(pl.LightningModule):
         x = batch
         out_ = self(x)
         
-        semisl_loss = self.loss(out_['projected'],out_['semisl_contrastive_matrix'])
+        positive_mask = out_['semisl_contrastive_matrix']
+        negative_mask = torch.ones_like(positive_mask)
+        
+        semisl_loss = self.loss(out_['projected'],positive_mask,negative_mask)
+        self.log('val_semisl_loss',semisl_loss,on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
         
         return semisl_loss
     
     def logging(self,out_, labeled): 
         
-        semisl_loss = self.loss(out_['projected'],out_['semisl_contrastive_matrix'])
-        sl_loss = self.loss(out_['projected'][labeled,:],out_['sl_contrastive_matrix'][labeled, labeled])
-        ssl_loss = self.loss(out_['projected'][~labeled,:],out_['ssl_contrastive_matrix'][~labeled, ~labeled])
+        labeled = labeled.bool()
+        
+        semisl_loss = self.loss(out_['projected'],out_['semisl_contrastive_matrix'], torch.ones_like(out_['semisl_contrastive_matrix']))
+        sl_loss = self.loss(out_['projected'][labeled,:],out_['sl_contrastive_matrix'][labeled, labeled],torch.ones_like(out_['sl_contrastive_matrix'][labeled, labeled]))
+        ssl_loss = self.loss(out_['projected'][~labeled,:],out_['ssl_contrastive_matrix'][~labeled, ~labeled], torch.ones_like(out_['ssl_contrastive_matrix'][~labeled, ~labeled]))
         
         # get similarities
         semisl_sim = self.loss.get_similarities(out_['projected'])
         ssl_sim = self.loss.get_similarities(out_['projected'][~labeled,:])
         sl_sim = self.loss.get_similarities(out_['projected'][labeled,:])
         
+        self.log('semisl_loss',semisl_loss,on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
+        self.log('sl_loss',sl_loss, on_step = True, on_epoch = True, sync_dist = True)
+        self.log('ssl_loss',ssl_loss, on_step = True, on_epoch = True, sync_dist = True)
+        
         if self.logger:
             
-            self.log('semisl_loss',semisl_loss)
-            self.log('sl_loss',sl_loss)
-            self.log('ssl_loss',ssl_loss)
-            
-            if self.global_step % 100 == 0:
+            if self.global_step % 200 == 0:
                 self.log_similarity(semisl_sim,'semisl_sim')
                 self.log_similarity(ssl_sim,'ssl_sim')
                 self.log_similarity(sl_sim,'sl_sim')
                 
                 fig, ax = plt.subplots(1, 1)
-                ax.imshow(out_['semisl_contrastive_matrix'].detach(
+                
+                semisl_contrastive_matrix = out_['semisl_contrastive_matrix']
+                semisl_contrastive_matrix[torch.eye(semisl_contrastive_matrix.shape[0],device = semisl_contrastive_matrix.device).bool()] = 0
+                
+                ax.imshow(semisl_contrastive_matrix.detach(
                 ).cpu().numpy(), cmap="plasma")
                 self.logger.log_image(
                     'target_contrastive_matrix', [wandb.Image(fig)])
@@ -101,6 +141,8 @@ class SemiSupCon(pl.LightningModule):
     
     def log_similarity(self,similarity,name):
         fig, ax = plt.subplots(1, 1)
+        # remove diagonal
+        similarity[torch.eye(similarity.shape[0],device = similarity.device).bool()] = 0
         ax.imshow(similarity.detach(
         ).cpu().numpy(), cmap="plasma")
         self.logger.log_image(
@@ -114,8 +156,8 @@ class SemiSupCon(pl.LightningModule):
         ## returns a matrix of shape [B*N_augmentations,B*N_augmentations] with 1s where the labels are the same
         ## and 0s where the labels are different
         
-        ssl_contrastive_matrix = self.get_ssl_contrastive_matrix(B,N,T,device = labels.device)
-        sl_contrastive_matrix = self.get_sl_contrastive_matrix(B,N,T,labels, device = labels.device)
+        ssl_contrastive_matrix = self.get_ssl_contrastive_matrix(B,N,device = labels.device)
+        sl_contrastive_matrix = self.get_sl_contrastive_matrix(B,N,labels, device = labels.device)
         
         # this is if we want to have a different N_aug for ssl and sl but it makes the code more complicated
         # new_contrastive_matrix = torch.zeros(B*(N_ssl+N_sl),B*(N_ssl+N_sl),device = labels.device)
@@ -170,8 +212,8 @@ class SemiSupCon(pl.LightningModule):
     
     def configure_optimizers(self):
         if self.optimizer is None:
-            optimizer = optim.AdamW(
-                self.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01)
+            optimizer = optim.Adam(
+                self.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-8)
         else:
             optimizer = self.optimizer(self.parameters())
             

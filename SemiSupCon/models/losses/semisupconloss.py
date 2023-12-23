@@ -41,7 +41,11 @@ class SSNTXent(nn.Module):
     
         pos = torch.sum( original_cosim * positive_mask, dim = 1)
         neg = torch.sum( original_cosim * negative_mask, dim = 1)
-        loss = -(torch.mean(torch.log(pos / (pos + neg))))    
+        
+        log_prob = torch.log(pos / (pos + neg))
+        log_prob = log_prob / positive_mask.sum(1)
+        
+        loss = -(torch.mean(log_prob))    
         
         # loss = - log_prob.sum()/MN ## not directly mean() because size of matrix is MN squared
         

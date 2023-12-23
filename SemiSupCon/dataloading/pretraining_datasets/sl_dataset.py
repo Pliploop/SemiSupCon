@@ -1,6 +1,6 @@
 from torch.utils.data import Dataset
 import torch
-from .utils import load_random_audio_chunk
+from SemiSupCon.dataloading.utils.loading_utils import load_audio_and_split_in_chunks, load_random_audio_chunk
 import os
 
 
@@ -8,7 +8,7 @@ import os
 
 class SupervisedDataset(Dataset):
     
-    def __init__(self, data_dir, annotations = None, target_length = 2.6, target_sample_rate = 22050, n_augmentations= 2, transform = True, augmentations = None, train = True, n_classes = 50) -> None:
+    def __init__(self, data_dir, annotations = None, target_length = 2.7, target_sample_rate = 22050, n_augmentations= 2, transform = True, augmentations = None, train = True, n_classes = 50) -> None:
         
         self.data_dir = data_dir
         self.target_length = target_length
@@ -18,38 +18,32 @@ class SupervisedDataset(Dataset):
         self.global_target_samples = self.target_samples * self.n_augmentations
         self.train = train
         self.n_classes = n_classes
+        self.transform = transform
+        self.augmentations = augmentations
         
-        self.file_list = self.get_file_list()
-        self.annotations = self.get_annotations()
+        self.annotations = annotations
         
-    def get_file_list(self):
-        # get list of files in data_dir that finish with either.wav or .mp3
-        file_list = []
-        for root, _, files in os.walk(self.data_dir):
-            for file in files:
-                if file.endswith(".wav") or file.endswith(".mp3"):
-                    file_list.append(os.path.join(root, file))
-                    
-    def get_annotations(self):
-        ## on a per-dataset basis
-        pass
+    def get_labels(self, index):
+        return torch.tensor(self.annotations.iloc[index]['labels'])
     
-    def get_labels(self,idx):
-        ## on a per-dataset basis
-        pass
-    
+    def __len__(self):
+        return len(self.annotations)
                     
     def __getitem__(self, index):
         
-        path = self.file_list[index]
+        path = os.path.join(self.data_dir, self.annotations.iloc[index]['file_path'])
         audio = load_random_audio_chunk(path, self.global_target_samples, self.target_sample_rate)
         if audio is None:
             return self[index + 1]
         
         audio = self.split_and_augment(audio)
         
-        labeled = torch.tensor(0)
+        labeled = torch.tensor(1)
         labels = self.get_labels(index)
+        
+        #add n_augmentation dimension as the first dimension
+        labels = labels.unsqueeze(0).repeat(self.n_augmentations,1)
+        labeled = labeled.unsqueeze(0).repeat(self.n_augmentations)
         
         
         

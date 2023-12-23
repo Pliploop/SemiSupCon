@@ -1,14 +1,14 @@
 from torch.utils.data import Dataset
 import torch
 import os
-from SemiSupCon.dataloading.utils.loading_utils import load_audio_and_split_in_chunks, load_random_audio_chunk
-
+from SemiSupCon.dataloading.utils.loading_utils import load_full_audio, load_random_audio_chunk
+import numpy as np
 
 
 
 class SelfSupervisedDataset(Dataset):
     
-    def __init__(self, data_dir, annotations = None, target_length = 2.6, target_sample_rate = 22050, n_augmentations= 2, transform = True, augmentations = None, train = True, n_classes = 50) -> None:
+    def __init__(self, data_dir, annotations = None, target_length = 2.7, target_sample_rate = 22050, n_augmentations= 2, transform = True, augmentations = None, train = True, n_classes = 50) -> None:
         
         self.data_dir = data_dir
         self.target_length = target_length
@@ -18,21 +18,24 @@ class SelfSupervisedDataset(Dataset):
         self.global_target_samples = self.target_samples * self.n_augmentations
         self.train = train
         self.n_classes = n_classes
+        self.transform = transform
+        self.augmentations = augmentations
+        self.allow_overlapping = False
         
-        self.file_list = self.get_file_list()
+        self.annotations = annotations
         
-    def get_file_list(self):
-        # get list of files in data_dir that finish with either.wav or .mp3
-        file_list = []
-        for root, _, files in os.walk(self.data_dir):
-            for file in files:
-                if file.endswith(".wav") or file.endswith(".mp3"):
-                    file_list.append(os.path.join(root, file))
+    def __len__(self):
+        return len(self.annotations)
                     
     def __getitem__(self, index):
         
-        path = self.file_list[index]
-        audio = load_random_audio_chunk(path, self.global_target_samples, self.target_sample_rate)
+        path = os.path.join(self.data_dir, self.annotations.iloc[index]['file_path'])
+        if self.allow_overlapping == False:
+            audio = load_random_audio_chunk(path, self.global_target_samples, self.target_sample_rate)
+        else:
+            audio = load_full_audio(path, self.target_samples, self.target_sample_rate)
+        
+        
         if audio is None:
             return self[index + 1]
         
@@ -40,6 +43,11 @@ class SelfSupervisedDataset(Dataset):
         
         labeled = torch.tensor(0)
         labels = torch.zeros(self.n_classes)
+        
+        
+        #add n_augmentation dimension as the first dimension
+        labels = labels.unsqueeze(0).repeat(self.n_augmentations,1)
+        labeled = labeled.unsqueeze(0).repeat(self.n_augmentations)
         
         return {
             "audio": audio,
@@ -49,8 +57,22 @@ class SelfSupervisedDataset(Dataset):
     
     def split_and_augment(self,audio):
         
-        waveform = torch.cat(torch.split(
-            audio, self.target_samples, dim=1)).unsqueeze(1)
+        if self.allow_overlapping == False:
+        
+            waveform = torch.cat(torch.split(
+                audio, self.target_samples, dim=1)).unsqueeze(1)
+        
+        else:
+            # sample N_augmentations random target_samples samples from the audio
+            for i in range(self.n_augmentations):
+                start_idx = np.random.randint(low=0, high=audio.shape[1] - self.target_samples)
+                waveform = audio[:,start_idx:start_idx + self.target_samples].unsqueeze(0)
+                if i == 0:
+                    waveform = waveform
+                else:
+                    waveform = torch.cat([waveform, waveform])
+            
+            
         
         if self.augmentations is not None and self.transform and self.train:
             waveform = self.augmentations(waveform)
@@ -58,8 +80,6 @@ class SelfSupervisedDataset(Dataset):
         return waveform
             
         
-        
-
 
 
 class DummyUnsupervisedDataset(Dataset):
