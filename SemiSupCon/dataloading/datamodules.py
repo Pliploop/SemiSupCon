@@ -13,6 +13,10 @@ class DataModuleSplitter:
     """generates annotation files for the MixedDataModule. Takes a task as argument
     and returns a pandas dataframe with three columns : file_path, split, labels.
     labels are one-hot encoded vectors of size n_classes or None if the dataset is unsupervised
+    
+    if supervised_data_p is 1, then all available supervised data is used. If it is 0, then no supervised data is used.
+    if fully_supervised is True, then only supervised data is used (e.g supervised contrastive learning or finetuning).
+    if use_test_set is false, then the test set is used as part of the training set.
     """
     
     def __init__(self,
@@ -23,7 +27,6 @@ class DataModuleSplitter:
                  test_split = 0.1,
                  use_test_set = False,
                  fully_supervised = False):
-        
         
         self.task = task
         self.data_dir = data_dir
@@ -133,11 +136,6 @@ class DataModuleSplitter:
         return annotations
         
         
-        
-        
-        
-        
-        
     def get_default_annotations(self):
         # read through data_dir, fetch any audio files, and random split train and val according to self.val_split
         # labels are None, or nan in the pandas dataframe
@@ -225,22 +223,6 @@ class MixedDataModule(pl.LightningDataModule):
         
     def setup(self, stage = 'fit'):
         
-        # self.supervised_dataset = SupervisedDataset(self.supervised_data_dir, self.self_supervised_annotations, self.target_length, self.target_sample_rate, self.n_augmentations, self.transform, self.augmentations,  self.n_classes, train = True)
-        # self.self_supervised_dataset = SelfSupervisedDataset(self.self_supervised_data_dir, self.self_supervised_annotations, self.target_length, self.target_sample_rate, self.n_augmentations, self.transform, self.augmentations, self.n_classes, train = True )
-        
-        # if self.val_split > 0:
-        #     train_supervised_dataset, val_supervised_dataset = self.split_datasets(self.supervised_dataset)
-        #     train_self_supervised_dataset, val_self_supervised_dataset =  self.split_datasets(self.self_supervised_dataset)
-        #     val_supervised_dataset.transform = False
-        #     val_self_supervised_dataset.transform = False
-        # else:
-        #     train_supervised_dataset = self.supervised_dataset
-        #     train_self_supervised_dataset = self.self_supervised_dataset
-        #     val_supervised_dataset = None
-        #     val_self_supervised_dataset = Non
-        
-        # much easier to get annotations beforehand and then split the dataset
-            
         
         supervised_train_annotations = self.annotations[(self.annotations['split'] == 'train') & (self.annotations['supervised'] == 1)]
         supervised_val_annotations = self.annotations[(self.annotations['split'] == 'val') & (self.annotations['supervised'] == 1)]
@@ -279,4 +261,4 @@ class MixedDataModule(pl.LightningDataModule):
         return MixedDataLoader(self.val_supervised_dataset, self.val_self_supervised_dataset, self.supervised_dataset_percentage, self.in_batch_supervised_percentage, batch_size = self.batch_size, num_workers = self.num_workers)
     
     def test_dataloader(self):
-        return MixedDataLoader(self.test_supervised_dataset, self.test_self_supervised_dataset, self.supervised_dataset_percentage, self.in_batch_supervised_percentage, batch_size = self.batch_size, num_workers = self.num_workers)
+        return MixedDataLoader(self.test_supervised_dataset, None, self.supervised_dataset_percentage, self.in_batch_supervised_percentage, batch_size = self.batch_size, num_workers = self.num_workers)
