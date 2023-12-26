@@ -1,6 +1,6 @@
 from torch.utils.data import Dataset
 import torch
-from SemiSupCon.dataloading.utils.loading_utils import load_audio_and_split_in_chunks, load_random_audio_chunk
+from SemiSupCon.dataloading.utils.loading_utils import load_audio_and_split_in_chunks, load_random_audio_chunk, load_full_audio
 import os
 
 
@@ -63,7 +63,47 @@ class SupervisedDataset(Dataset):
             
         return waveform
             
+  
+  
+  
+class SupervisedTestDataset(SupervisedDataset):
+    
+    def __init__(self, data_dir, annotations = None, target_length = 2.7, target_sample_rate = 22050, n_augmentations= 1, transform = True, augmentations = None, train = True, n_classes = 50) -> None:
         
+        super().__init__(data_dir, annotations, target_length, target_sample_rate, n_augmentations, transform, augmentations, train, n_classes)
+        
+        self.allow_overlapping = True
+        
+    def __getitem__(self, index):
+        
+        path = os.path.join(self.data_dir, self.annotations.iloc[index]['file_path'])
+        
+        
+        audio = load_audio_and_split_in_chunks(path, self.target_samples, self.target_sample_rate)
+        labeled = torch.tensor(1)
+        labels = self.get_labels(index)
+        
+        #add n_augmentation dimension as the first dimension
+        labels = labels.unsqueeze(0).repeat(self.n_augmentations,1)
+        labeled = labeled.unsqueeze(0).repeat(self.n_augmentations)
+        
+        
+        
+        return {
+            "audio": audio,
+            "labels": labels,
+            "labeled": labeled
+        }
+    
+    def split_and_augment(self,audio):
+        
+        waveform = torch.cat(torch.split(
+            audio, self.target_samples, dim=1)).unsqueeze(1)
+        
+        if self.augmentations is not None and self.transform and self.train:
+            waveform = self.augmentations(waveform)
+            
+        return waveform      
 
 class DummySupervisedDataset(Dataset):
     def __init__(self, size=100):

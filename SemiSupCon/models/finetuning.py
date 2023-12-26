@@ -6,31 +6,54 @@ import wandb
 from torch import optim
 from pytorch_lightning.cli import OptimizerCallable
 from SemiSupCon.models.semisupcon import SemiSupCon
+from torchmetrics.functional import auroc, ap
 
 class FinetuneSemiSupCon(pl.LightningModule):
     
     def __init__(self, encoder, 
-        optimizer: OptimizerCallable = None, freeze_encoder = True, checkpoint_path = None):
+        optimizer: OptimizerCallable = None,
+        freeze_encoder = True,
+        checkpoint = None,
+        mlp_head = True,
+        checkpoint_head = None,
+        task = 'mtat_top50'):
         super().__init__()
         
         self.semisupcon = SemiSupCon(encoder)
-        
-        self.mlp = nn.Sequential(
-            nn.Linear(512, 512, bias=False),
-            nn.ReLU(),
-            nn.Linear(512, 128, bias=False),
-        )
-        
         self.optimizer = optimizer
         
         self.freeze_encoder = freeze_encoder
-        self.checkpoint_path = checkpoint_path
+        self.checkpoint = checkpoint
+        self.checkpoint_head = checkpoint_head
         
-        if self.checkpoint_path:
-            self.load_encoder_weights_from_checkpoint(self.checkpoint_path)
+        if self.checkpoint:
+            self.load_encoder_weights_from_checkpoint(self.checkpoint)
+            
+        if self.checkpoint_head:
+            self.mlp.load_state_dict(torch.load(self.checkpoint_head))
             
         if self.freeze_encoder:
             self.freeze_encoder()
+            
+            
+        self.agg_preds = []
+        self.agg_ground_truth = []
+        
+        self.task = task
+        
+        if self.task == 'mtat_top50':
+            self.loss_fn = nn.BCEWithLogitsLoss()
+            self.n_classes = 50
+            
+        if mlp_head:
+            self.head = nn.Sequential(
+                nn.Linear(512, 512, bias=False),
+                nn.ReLU(),
+                nn.Linear(512, self.n_classes, bias=False),
+            )
+        else:
+            self.head = nn.Linear(512, self.n_classes, bias=False)
+            
         
         
     def load_encoder_weights_from_checkpoint(self,checkpoint_path):
@@ -40,6 +63,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
     def freeze_encoder(self):
         self.semisupcon.freeze()
+        self.semisupcon.eval()
         
         # assert that the encoder is frozen
         for param in self.semisupcon.parameters():
@@ -59,7 +83,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
         # x is of shape [B,T]:
         
         encoded = self.semisupcon.encoder(wav)
-        projected = self.mlp(encoded)
+        projected = self.head(encoded)
         
         return {
             'projected':projected,
@@ -73,25 +97,81 @@ class FinetuneSemiSupCon(pl.LightningModule):
         x = batch
         out_ = self(x)
         
+        logits = out_['projected']
+        labels = out_['labels']
         
-        self.logging(out_)
+        loss = self.loss_fn(logits,labels)
         
-        return 0
+        #get metrics
+        preds = torch.sigmoid(logits)
+        aurocs = auroc(preds,labels,task = 'multilabel',num_classes = self.n_classes)
+        ap_score = ap(preds,labels,task = 'multilabel',num_classes = self.n_classes)
+        
+        self.log('train_loss',loss, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
+        self.log('train_auroc',aurocs, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
+        self.log('train_ap',ap_score, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
+        
+        return loss
     
     
     def validation_step(self,batch,batch_idx):
         x = batch
         out_ = self(x)
         
+        logits = out_['projected']
+        labels = out_['labels']
         
-        self.logging(out_)
+        loss = self.loss_fn(logits,labels)
         
-        return 0
+        #get metrics
+        preds = torch.sigmoid(logits)
+        aurocs = auroc(preds,labels,task = 'multilabel',num_classes = self.n_classes)
+        ap_score = ap(preds,labels,task = 'multilabel',num_classes = self.n_classes)
+        
+        self.log('val_loss',loss, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
+        self.log('val_auroc',aurocs, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
+        self.log('val_ap',ap_score, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
+        
+        return loss
     
-    def logging(self,out_): 
+    def test_step(self,batch,batch_idx):
+        x = batch
         
-        # metrics and losses are logged here
-        pass
+        x['audio'] = x['audio'].squeeze(0).unsqueeze(1).unsqueeze(1)
+        x['labels'] = x['labels'].squeeze(0)
+        
+        out_ = self(x)
+        
+        
+        logits = out_['projected']
+        labels = out_['labels']
+        
+        logits = logits.mean(0).unsqueeze(0)
+        labels = labels[0].unsqueeze(0)
+        
+        self.agg_ground_truth.append(labels)
+        self.agg_preds.append(logits)
+        
+        loss = self.loss_fn(logits,labels)
+        return loss
+    
+    
+    def on_test_epoch_end(self):
+        preds = torch.cat(self.agg_preds,0)
+        ground_truth = torch.cat(self.agg_ground_truth,0)
+        
+        preds = torch.sigmoid(preds)
+        
+        loss = self.loss_fn(preds,ground_truth)
+        aurocs = auroc(preds,ground_truth,task = 'multilabel',num_classes = self.n_classes)
+        ap_score = ap(preds,ground_truth,task = 'multilabel',num_classes = self.n_classes)
+        
+        self.log('test_loss',loss, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
+        self.log('test_auroc',aurocs, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
+        self.log('test_ap',ap_score, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
+        
+        self.agg_preds = []
+        self.agg_ground_truth = []
     
     
         
@@ -105,3 +185,6 @@ class FinetuneSemiSupCon(pl.LightningModule):
             optimizer = self.optimizer(self.parameters())
             
         return optimizer
+    
+    def on_checkpoint_save(self, checkpoint):
+        checkpoint['state_dict'] = self.head.state_dict()
