@@ -31,7 +31,7 @@ class Delay(BaseWaveformTransform):
         volume_factor: float = 0.5,
         repeats: int = 2,
         attenuation: float = 0.5,
-        debug = True
+        debug = False
     ):
         """
         :param sample_rate:
@@ -211,14 +211,14 @@ class Delay(BaseWaveformTransform):
         
         batch_size, num_channels, num_samples = samples.shape
         
-        delayed_signal = torch.zeros(batch_size, num_channels, num_samples + delay_samples, device = samples.device)
+        delayed_signal = torch.zeros(batch_size, num_channels, num_samples + repeats * delay_samples, device = samples.device)
         
         for i in range(repeats):
-            delayed_signal[:,:,delay_samples:] += attenuation**i * samples[:,:,:-delay_samples]
+            delayed_signal[:,:,i*delay_samples:i*delay_samples+num_samples] += samples * attenuation ** (i)
             
         delayed_signal = delayed_signal[:,:,:num_samples]
         
-        samples = volume_factor * samples + (1-volume_factor) * delayed_signal
+        samples = (samples + volume_factor * delayed_signal)/2
         
         if self.debug:
             ## pretty print the volume factor, number of repeats, and attenuation factor
