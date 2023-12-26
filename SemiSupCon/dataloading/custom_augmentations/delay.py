@@ -20,8 +20,8 @@ class Delay(BaseWaveformTransform):
 
     def __init__(
         self,
-        min_delay_ms: float = 20.0,
-        max_delay_ms: float = 100.0,
+        min_delay_ms: float = 100.0,
+        max_delay_ms: float = 500.0,
         mode: str = "per_example",
         p: float = 0.5,
         p_mode: str = None,

@@ -9,7 +9,7 @@ trainer:
   logger: null
   callbacks: null
   fast_dev_run: false
-  max_epochs: 100
+  max_epochs: 1000
   min_epochs: null
   max_steps: -1
   min_steps: null
@@ -59,8 +59,9 @@ data:
   batch_size: 96
   num_workers: 16
   val_split: 0.1
-  supervised_data_p: 1
+  supervised_data_p: 0
   intrabatch_supervised_p: 0
+  fully_supervised: false
 log: false
 log_model: false
 ckpt_path: Checkpoints

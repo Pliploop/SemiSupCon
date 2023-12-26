@@ -184,7 +184,7 @@ class MixedDataModule(pl.LightningDataModule):
                  transform = True,
                  n_classes = 50,
                  batch_size = 32,
-                 num_workers = 8,
+                 num_workers = 16,
                  val_split = 0.1,
                  test_split = 0,
                  use_test_set = False,
@@ -233,7 +233,7 @@ class MixedDataModule(pl.LightningDataModule):
                 ],
                 p=0.8,
             )
-        self.self_supervised_augmentations = None
+        self.self_supervised_augmentations = self.supervised_augmentations
         
         if self.fully_supervised:
             self.supervised_dataset_percentage = 1
