@@ -3,7 +3,7 @@ seed_everything: 123
 trainer:
   accelerator: auto
   strategy: auto
-  devices: auto
+  devices: [6]
   num_nodes: 1
   precision: null
   logger: null
@@ -50,18 +50,18 @@ model:
       lr: 0.0001
 data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
-  task: null
+  task: 'mtat_top50'
   target_length: 2.7
   target_sample_rate: 22050
   n_augmentations: 2
   transform: true
   n_classes: 50
   batch_size: 96
-  num_workers: 16
+  num_workers: 32
   val_split: 0.1
-  supervised_data_p: 0
-  intrabatch_supervised_p: 0
-  fully_supervised: false
+  supervised_data_p: 1
+  intrabatch_supervised_p: 1
+  fully_supervised: true
 log: false
 log_model: false
 ckpt_path: Checkpoints

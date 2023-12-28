@@ -31,6 +31,9 @@ class SSNTXent(nn.Module):
         
         
         positive_mask = positive_mask * self_contrast
+        positive_sums = positive_mask.sum(1)
+        ## if there are no positive samples, set the positive mask to 1
+        positive_sums[positive_sums == 0] = 1
         negative_mask = negative_mask * self_contrast
         
     
@@ -39,16 +42,23 @@ class SSNTXent(nn.Module):
         original_cosim = torch.exp(original_cosim)   ## remove this when reverting
          
     
-        pos = torch.sum( original_cosim * positive_mask, dim = 1)
+        # pos = torch.sum( original_cosim * positive_mask, dim = 1)
+        # neg = torch.sum( original_cosim * negative_mask, dim = 1)
+        
+        # log_prob = torch.log(pos / (pos + neg))
+        
+        pos = original_cosim * positive_mask
         neg = torch.sum( original_cosim * negative_mask, dim = 1)
         
-        log_prob = torch.log(pos / (pos + neg))
-        log_prob = log_prob / positive_mask.sum(1)
+        log_prob = pos/neg
+        
+        log_prob = torch.log(log_prob + 1e-20) ## zeros in here : how to avoid them?
+        log_prob = log_prob * positive_mask
+        log_prob = log_prob.sum(1)
+        
+        log_prob = log_prob / positive_sums       
         
         loss = -(torch.mean(log_prob))    
         
-        # loss = - log_prob.sum()/MN ## not directly mean() because size of matrix is MN squared
-        
-        # loss = - log_prob.mean()
         return loss
     

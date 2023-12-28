@@ -25,11 +25,11 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
             
             recent_callback = ModelCheckpoint(
                 dirpath=os.path.join(self.config['ckpt_path'], experiment_name),
-                filename='checkpoint-{step}',  # This means all checkpoints are saved, not just the top k
-                every_n_epochs=1  # Replace with your desired value
+                filename='checkpoint-epoch{epoch}',  # This means all checkpoints are saved, not just the top k
+                every_n_epochs=100,  # Replace with your desired value
+                save_top_k = -1
             )
-            callbacks = [recent_callback                  
-                        ]
+            callbacks = [recent_callback]
             
             
             trainer.callbacks = trainer.callbacks[:-1]+callbacks

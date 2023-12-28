@@ -22,11 +22,6 @@ class SemiSupCon(pl.LightningModule):
         
         self.optimizer = optimizer
         
-        
-    def freeze(self):
-        self.freeze()
-        self.eval()
-        
     def forward(self,x):
         
         if isinstance(x,dict):

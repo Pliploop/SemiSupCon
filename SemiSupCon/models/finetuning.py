@@ -6,7 +6,7 @@ import wandb
 from torch import optim
 from pytorch_lightning.cli import OptimizerCallable
 from SemiSupCon.models.semisupcon import SemiSupCon
-from torchmetrics.functional import auroc, ap
+from torchmetrics.functional import auroc, average_precision
 
 class FinetuneSemiSupCon(pl.LightningModule):
     
@@ -19,6 +19,11 @@ class FinetuneSemiSupCon(pl.LightningModule):
         task = 'mtat_top50'):
         super().__init__()
         
+        self.task = task
+        if self.task == 'mtat_top50':
+            self.loss_fn = nn.BCEWithLogitsLoss()
+            self.n_classes = 50
+            
         self.semisupcon = SemiSupCon(encoder)
         self.optimizer = optimizer
         
@@ -33,17 +38,14 @@ class FinetuneSemiSupCon(pl.LightningModule):
             self.mlp.load_state_dict(torch.load(self.checkpoint_head))
             
         if self.freeze_encoder:
-            self.freeze_encoder()
+            self.semisupcon.freeze()
+            self.semisupcon.eval()
             
             
         self.agg_preds = []
         self.agg_ground_truth = []
         
-        self.task = task
         
-        if self.task == 'mtat_top50':
-            self.loss_fn = nn.BCEWithLogitsLoss()
-            self.n_classes = 50
             
         if mlp_head:
             self.head = nn.Sequential(
@@ -61,20 +63,11 @@ class FinetuneSemiSupCon(pl.LightningModule):
         self.semisupcon.load_state_dict(checkpoint['state_dict'], strict = False)
         
         
-    def freeze_encoder(self):
-        self.semisupcon.freeze()
-        self.semisupcon.eval()
-        
-        # assert that the encoder is frozen
-        for param in self.semisupcon.parameters():
-            assert param.requires_grad == False
-        print('encoder frozen')
-        
     def forward(self,x):
         
         if isinstance(x,dict):
             wav = x['audio']
-            labels = x['labels']
+            labels = x['labels'].squeeze(1)
         else:
             wav = x
             labels = torch.zeros(wav.shape[0]*wav.shape[1],10)
@@ -82,7 +75,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
         # x is of shape [B,T]:
         
-        encoded = self.semisupcon.encoder(wav)
+        encoded = self.semisupcon(wav)['encoded']
         projected = self.head(encoded)
         
         return {
@@ -100,12 +93,12 @@ class FinetuneSemiSupCon(pl.LightningModule):
         logits = out_['projected']
         labels = out_['labels']
         
-        loss = self.loss_fn(logits,labels)
+        loss = self.loss_fn(logits,labels.float())
         
         #get metrics
         preds = torch.sigmoid(logits)
-        aurocs = auroc(preds,labels,task = 'multilabel',num_classes = self.n_classes)
-        ap_score = ap(preds,labels,task = 'multilabel',num_classes = self.n_classes)
+        aurocs = auroc(preds,labels,task = 'multilabel',num_labels = self.n_classes)
+        ap_score = average_precision(preds,labels,task = 'multilabel',num_labels = self.n_classes)
         
         self.log('train_loss',loss, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
         self.log('train_auroc',aurocs, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
@@ -121,12 +114,12 @@ class FinetuneSemiSupCon(pl.LightningModule):
         logits = out_['projected']
         labels = out_['labels']
         
-        loss = self.loss_fn(logits,labels)
-        
+        loss = self.loss_fn(logits,labels.float())
+    
         #get metrics
         preds = torch.sigmoid(logits)
-        aurocs = auroc(preds,labels,task = 'multilabel',num_classes = self.n_classes)
-        ap_score = ap(preds,labels,task = 'multilabel',num_classes = self.n_classes)
+        aurocs = auroc(preds,labels,task = 'multilabel',num_labels = self.n_classes)
+        ap_score = average_precision(preds,labels,task = 'multilabel',num_labels = self.n_classes)
         
         self.log('val_loss',loss, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
         self.log('val_auroc',aurocs, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
@@ -152,7 +145,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
         self.agg_ground_truth.append(labels)
         self.agg_preds.append(logits)
         
-        loss = self.loss_fn(logits,labels)
+        loss = self.loss_fn(logits,labels.float())
         return loss
     
     
@@ -162,9 +155,9 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
         preds = torch.sigmoid(preds)
         
-        loss = self.loss_fn(preds,ground_truth)
-        aurocs = auroc(preds,ground_truth,task = 'multilabel',num_classes = self.n_classes)
-        ap_score = ap(preds,ground_truth,task = 'multilabel',num_classes = self.n_classes)
+        loss = self.loss_fn(preds,ground_truth.float())
+        aurocs = auroc(preds,ground_truth,task = 'multilabel',num_labels = self.n_classes)
+        ap_score = average_precision(preds,ground_truth,task = 'multilabel',num_labels = self.n_classes)
         
         self.log('test_loss',loss, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
         self.log('test_auroc',aurocs, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)

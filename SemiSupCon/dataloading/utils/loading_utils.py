@@ -6,8 +6,11 @@ from encodec.utils import convert_audio
 
 def load_random_audio_chunk(path, target_samples, target_sample_rate):
     extension = path.split(".")[-1]
-    info = sf.info(path)
-    sample_rate = info.samplerate
+    try:
+        info = sf.info(path)
+        sample_rate = info.samplerate
+    except:
+        return None
     if extension == "mp3":
         n_frames = info.frames - 8192
     else:

@@ -1,11 +1,11 @@
 
-from src.models.finetune_model import MaCHUPFinetune
+from SemiSupCon.models.finetuning import FinetuneSemiSupCon
+from SemiSupCon.dataloading.datamodules import MixedDataModule
 from pytorch_lightning.cli import LightningCLI
 from pytorch_lightning.cli import SaveConfigCallback
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from src.dataloading.finetuning_datasets import FineTuneDataModule
 import yaml
 import os
 
@@ -76,7 +76,7 @@ class MyLightningCLI(LightningCLI):
 if __name__ == "__main__":
     
 
-    cli = MyLightningCLI(model_class=MaCHUPFinetune, datamodule_class=FineTuneDataModule, seed_everything_default=123,
+    cli = MyLightningCLI(model_class=FinetuneSemiSupCon, datamodule_class=MixedDataModule, seed_everything_default=123,
                          run=False, save_config_callback=LoggerSaveConfigCallback, save_config_kwargs={"overwrite": True})
 
     cli.instantiate_classes()
