@@ -24,6 +24,8 @@ class DataModuleSplitter:
     def __init__(self,
                  data_dir,
                  task=None,
+                 ssl_task= None,
+                 sl_task= None,
                  supervised_data_p = 1,
                  val_split=0.1,
                  test_split = 0.1,
@@ -33,6 +35,8 @@ class DataModuleSplitter:
                  ):
         
         self.task = task
+        self.ssl_task = ssl_task
+        self.sl_task = sl_task
         self.data_dir = data_dir
         self.supervised_data_p = supervised_data_p
         self.fully_supervised = fully_supervised
@@ -43,14 +47,40 @@ class DataModuleSplitter:
             self.test_split = 0
             
         
-        if self.task is None:
-            self.fetch_function = self.get_default_annotations
-        else:
-            self.fetch_function = eval(f"self.get_{self.task}_annotations")
-            
-        
         self.n_classes = 0
-        self.annotations = self.get_annotations()
+            
+        if self.ssl_task == self.sl_task:
+            print('what the hekk')
+            if self.ssl_task is None:
+                fetch_function = self.get_default_annotations
+            else:
+                fetch_function = eval(f"self.get_{self.ssl_task}_annotations")
+            annotations = fetch_function()
+            self.annotations = self.filter_supervised_annotations(annotations, self.supervised_data_p)
+            self.annotations['task'] = self.ssl_task
+            
+        else:
+            if self.ssl_task is None:
+                ssl_fetch_function = self.get_default_annotations
+            else:
+                ssl_fetch_function = eval(f"self.get_{self.ssl_task}_annotations")
+            if self.sl_task is None:
+                sl_fetch_function = self.get_default_annotations
+            else:
+                sl_fetch_function = eval(f"self.get_{self.sl_task}_annotations")
+                
+            ssl_annotations = ssl_fetch_function()
+            sl_annotations = sl_fetch_function()
+            
+            ssl_annotations.loc[:,'labels'] = None
+            sl_annotations = self.filter_supervised_annotations(sl_annotations, self.supervised_data_p, drop = True)
+            ssl_annotations['task'] = self.ssl_task
+            sl_annotations['task'] = self.sl_task
+            
+            self.annotations = pd.concat([ssl_annotations, sl_annotations])
+        
+        
+        # self.annotations = self.get_annotations()
         
         if self.use_test_set==False:
             # change the split column to train where it is 'test'
@@ -71,6 +101,26 @@ class DataModuleSplitter:
     def get_annotations(self):
         return self.fetch_function()
     
+    def filter_supervised_annotations(self, annotations, supervised_data_p, drop = False):
+        supervised_annotations = annotations[annotations.labels.notna()]
+        unsupervised_annotations = annotations[annotations.labels.isna()]
+        
+        n_supervised = int(len(supervised_annotations) * supervised_data_p)
+        shuffle =  np.random.permutation(len(supervised_annotations))
+        unsupervised_indices = shuffle[n_supervised:]
+        temp_labels = supervised_annotations['labels']
+        temp_labels.iloc[unsupervised_indices] = None
+        annotations.loc[:,'labels'] = temp_labels
+        annotations = pd.concat([supervised_annotations, unsupervised_annotations])
+        
+        annotations = annotations[['file_path', 'labels','split']]
+        
+        if drop :
+            annotations = annotations[annotations['labels'].notna()]
+        
+        return annotations
+        
+    
     def get_mtat_top50_annotations(self):
         csv_path = '/import/c4dm-datasets/MagnaTagATune/annotations_final.csv'
         annotations = pd.read_csv(csv_path, sep='\t')
@@ -78,6 +128,11 @@ class DataModuleSplitter:
 
         top_50_labels = labels.sum(axis=0).sort_values(ascending=False).head(50).index
         labels = labels[top_50_labels]
+        print(labels.columns)
+        
+        
+        ## rename the columns to match the default annotations
+        annotations = annotations.rename(columns={'mp3_path':'file_path'})
 
         label_sums = labels.sum(axis=1)
         unsupervised_annotations = annotations[label_sums == 0]
@@ -85,29 +140,28 @@ class DataModuleSplitter:
         labels = labels[label_sums > 0]
 
         annotations['labels'] = labels.values.tolist()
-        annotations = annotations[['mp3_path', 'labels']]
+        annotations = annotations[['file_path', 'labels']]
         unsupervised_annotations['labels'] = None
-        unsupervised_annotations = unsupervised_annotations[['mp3_path', 'labels']]
+        unsupervised_annotations = unsupervised_annotations[['file_path', 'labels']]
+        unsupervised_annotations['split'] = 'train'
 
         val_folders = ['c/']
         test_folders = ['d/','e/', 'f/']
 
         annotations['split'] = 'train'
-        annotations.loc[annotations['mp3_path'].str[:2].isin(val_folders), 'split'] = 'val'
-        annotations.loc[annotations['mp3_path'].str[:2].isin(test_folders), 'split'] = 'test'
+        annotations.loc[annotations['file_path'].str[:2].isin(val_folders), 'split'] = 'val'
+        annotations.loc[annotations['file_path'].str[:2].isin(test_folders), 'split'] = 'test'
 
-        n_supervised = int(len(annotations) * self.supervised_data_p)
-        shuffle =  np.random.permutation(len(annotations))
-        unsupervised_indices = shuffle[n_supervised:]
-        temp_labels = annotations['labels']
-        temp_labels.iloc[unsupervised_indices] = None
-        annotations['labels'] = temp_labels
 
-        unsupervised_annotations['split'] = 'train'
+        # n_supervised = int(len(annotations) * self.supervised_data_p)
+        # shuffle =  np.random.permutation(len(annotations))
+        # unsupervised_indices = shuffle[n_supervised:]
+        # temp_labels = annotations['labels']
+        # temp_labels.iloc[unsupervised_indices] = None
+        # annotations.loc[:,'labels'] = temp_labels
+
         annotations = pd.concat([annotations, unsupervised_annotations])
         
-        ## rename the columns to match the default annotations
-        annotations = annotations.rename(columns={'mp3_path':'file_path'})
 
         return annotations
     
@@ -116,6 +170,7 @@ class DataModuleSplitter:
         csv_path = '/import/c4dm-datasets/MagnaTagATune/annotations_final.csv'
         annotations = pd.read_csv(csv_path, sep='\t')
         labels = annotations.drop(columns=['mp3_path', 'clip_id'])
+        print(labels.columns)
         
         annotations['labels'] = labels.values.tolist()
         val_folders = ['c/']
@@ -124,18 +179,19 @@ class DataModuleSplitter:
         annotations['split'] = 'train'
         annotations.loc[annotations['mp3_path'].str[:2].isin(val_folders), 'split'] = 'val'
         annotations.loc[annotations['mp3_path'].str[:2].isin(test_folders), 'split'] = 'test'
-        
-        n_supervised = int(len(annotations) * self.supervised_data_p)
-        shuffle =  np.random.permutation(len(annotations))
-        unsupervised_indices = shuffle[n_supervised:]
-        temp_labels = annotations['labels']
-        temp_labels.iloc[unsupervised_indices] = None
-        annotations.loc[:,'labels'] = temp_labels
-        annotations = annotations[['mp3_path', 'labels','split']]
         annotations = annotations.rename(columns={'mp3_path':'file_path'})
-        
-        
         self.n_classes = len(labels.columns)
+        
+        
+        # n_supervised = int(len(annotations) * self.supervised_data_p)
+        # shuffle =  np.random.permutation(len(annotations))
+        # unsupervised_indices = shuffle[n_supervised:]
+        # temp_labels = annotations['labels']
+        # temp_labels.iloc[unsupervised_indices] = None
+        # annotations.loc[:,'labels'] = temp_labels
+        # annotations = annotations[['file_path', 'labels','split']]
+        
+        
         
         return annotations
         
@@ -169,15 +225,57 @@ class DataModuleSplitter:
             
         return annotations
         
+    def get_gtzan_annotations(self):
         
+        return 
     
+    def get_emomusic_annotations(self):
+        
+        return
     
+    def get_nsynth_pitch_annotations(self):
+        
+        return
+    
+    def get_nsynth_instr_annotations(self):
+        
+        return
+    
+    def get_vocalset_singer_annotations(self):
+        
+        return
+    
+    def get_vocalset_technique_annotations(self):
+        
+        return
+    
+    def get_mtg_top50_annotations(self):
+        
+        return
+    
+    def get_mtg_instr_annotations(self):
+        
+        return
+    
+    def get_mtg_genre_annotations(self):
+            
+        return
+        
+    def get_mtg_mood_annotations(self):
+        
+        return
+    
+    def get_openmic_annotations(self):
+        
+        return
     
 class MixedDataModule(pl.LightningDataModule):
     
     def __init__(self,
                  data_dir,
                  task = None,
+                 sl_task = None,
+                 ssl_task = None,
                  target_length = 2.7,
                  target_sample_rate = 22050,
                  n_augmentations= 2,
@@ -196,6 +294,8 @@ class MixedDataModule(pl.LightningDataModule):
         
         self.data_dir = data_dir
         self.task = task
+        self.sl_task = sl_task
+        self.ssl_task = ssl_task
         self.target_length = target_length
         self.target_sample_rate = target_sample_rate
         self.n_augmentations = n_augmentations
@@ -239,7 +339,7 @@ class MixedDataModule(pl.LightningDataModule):
             self.supervised_dataset_percentage = 1
             self.in_batch_supervised_percentage = 1
         
-        self.splitter = DataModuleSplitter(self.data_dir, self.task, self.supervised_dataset_percentage, self.val_split, self.test_split, self.use_test_set, self.fully_supervised)
+        self.splitter = DataModuleSplitter(self.data_dir, self.task, self.ssl_task, self.sl_task, self.supervised_dataset_percentage, self.val_split, self.test_split, self.use_test_set, self.fully_supervised)
         self.annotations = self.splitter.annotations
         
         

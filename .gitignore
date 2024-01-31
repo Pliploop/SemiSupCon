@@ -76,6 +76,9 @@ docs/_build/
 .pybuilder/
 target/
 Checkpoints
+Checkpoints-finetuning
+results
+config.yaml
 checkpoints
 
 # Jupyter Notebook

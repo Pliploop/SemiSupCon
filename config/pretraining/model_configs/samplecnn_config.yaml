@@ -1,0 +1,15 @@
+encoder: 
+    class_path: SemiSupCon.models.encoders.samplecnn.SampleCNN
+    init_args:
+      strides:
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      supervised: false
+      out_dim: 128

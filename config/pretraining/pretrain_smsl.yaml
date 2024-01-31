@@ -3,13 +3,13 @@ seed_everything: 123
 trainer:
   accelerator: auto
   strategy: auto
-  devices: auto
+  devices: [6]
   num_nodes: 1
   precision: null
   logger: null
   callbacks: null
   fast_dev_run: false
-  max_epochs: 100
+  max_epochs: 1000
   min_epochs: null
   max_steps: -1
   min_steps: null
@@ -43,34 +43,29 @@ trainer:
 model:
   encoder: 
     class_path: SemiSupCon.models.encoders.samplecnn.SampleCNN
-  freeze_encoder: true
-  mlp_head: true 
-  checkpoint: null 
-  checkpoint_head : null
-  task : mtat_top50
+  temperature: 0.1
   optimizer:
     class_path: torch.optim.Adam
     init_args:
-      lr: 0.0003
-      weight_decay: 0.000001
+      lr: 0.0001
 data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
-  ssl_task: null
-  sl_task: mtat_top50
+  task: 'mtat_top50'
+  sl_task: 'mtat_top50'
+  ssl_task: 'mtat_top50'
   target_length: 2.7
   target_sample_rate: 22050
-  n_augmentations: 1
-  transform: false
+  n_augmentations: 2
+  transform: true
   n_classes: 50
-  batch_size: 64
-  num_workers: 16
+  batch_size: 96
+  num_workers: 64
   val_split: 0.1
-  supervised_data_p: 1
-  intrabatch_supervised_p: 1
-  use_test_set: true
-  fully_supervised: true
+  supervised_data_p: 0.8
+  intrabatch_supervised_p: 0.8
+  fully_supervised: false
 log: false
 log_model: false
-ckpt_path: Checkpoints-finetuning
+ckpt_path: Checkpoints
 resume_id: null
 resume_from_checkpoint: null

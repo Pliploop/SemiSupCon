@@ -52,6 +52,7 @@ class MixedDataLoader(DataLoader):
         self.supervised_dataset_percentage = supervised_dataset_percentage
         self.in_batch_supervised_percentage = in_batch_supervised_percentage
         self.supervised_batch_size = 0
+        self.unsupervised_batch_size = 0
         
         # if self.supervised_dataset is None:
         #     self.supervised_dataset_size = 0
@@ -73,18 +74,69 @@ class MixedDataLoader(DataLoader):
         
         if self.supervised_dataset is None:
             self.supervised_dataloader = None
+            self.supervised_dataset_size = 0
         else:
             self.supervised_dataset_size = len(self.supervised_dataset)
             self.supervised_dataset_indices = np.random.permutation(self.supervised_dataset_size)[:int(self.supervised_dataset_size * self.supervised_dataset_percentage)]
             self.supervised_dataset = torch.utils.data.Subset(self.supervised_dataset, self.supervised_dataset_indices)
             self.supervised_batch_size = int(self.batch_size * self.in_batch_supervised_percentage)
-            self.supervised_dataloader = DataLoader(self.supervised_dataset, batch_size=self.supervised_batch_size, shuffle=True, num_workers=self.num_workers//2)
             
         if self.unsupervised_dataset is None:
             self.unsupervised_dataloader = None
+            self.unsupervised_dataset_size = 0
         else:
             self.unsupervised_batch_size = self.batch_size - self.supervised_batch_size
-            self.unsupervised_dataloader = DataLoader(self.unsupervised_dataset, batch_size=self.unsupervised_batch_size, shuffle=True, num_workers=self.num_workers//2)
+            self.unsupervised_dataset_size = len(self.unsupervised_dataset)
+
+        
+        
+        # create some samplers for the supervised and unsupervised dataloaders so that they have the same length
+        # number of batches should be the same for both dataloaders
+        
+        # if self.supervised_dataset is None:
+        #     self.supervised_dataset_size = 0
+        # else:
+        #     self.supervised_dataset_size = len(self.supervised_dataset)
+        # if self.unsupervised_dataset is None:
+        #     self.unsupervised_dataset_size = 0
+        # else:
+        #     self.unsupervised_dataset_size = len(self.unsupervised_dataset)
+            
+        # max_dataset_size = max(self.supervised_dataset_size, self.unsupervised_dataset_size)
+        if self.supervised_dataset is None:
+            target_unsupervised_dataset_size = self.unsupervised_dataset_size
+            target_supervised_dataset_size = 0
+            
+            
+        elif self.unsupervised_dataset is None:
+            target_supervised_dataset_size = self.supervised_dataset_size
+            target_unsupervised_dataset_size = 0
+        else:
+            max_dataloader_size = max(self.supervised_dataset_size//self.supervised_batch_size + 1, self.unsupervised_dataset_size//self.unsupervised_batch_size +1)
+            target_supervised_dataset_size = max_dataloader_size * self.supervised_batch_size
+            target_unsupervised_dataset_size = max_dataloader_size * self.unsupervised_batch_size
+        
+        if self.supervised_dataset is not None:
+            supervised_sampler = torch.utils.data.RandomSampler(self.supervised_dataset, replacement=True, num_samples=target_supervised_dataset_size)
+            self.supervised_dataloader = DataLoader(self.supervised_dataset, batch_size=self.supervised_batch_size, sampler=supervised_sampler, num_workers=self.num_workers//2, drop_last=True)
+            max_dataloader_size = len(self.supervised_dataloader)
+        if self.unsupervised_dataset is not None:
+            unsupervised_sampler = torch.utils.data.RandomSampler(self.unsupervised_dataset, replacement=True, num_samples=target_unsupervised_dataset_size)
+            self.unsupervised_dataloader = DataLoader(self.unsupervised_dataset, batch_size=self.unsupervised_batch_size, sampler=unsupervised_sampler, num_workers=self.num_workers//2, drop_last=True)
+            max_dataloader_size = len(self.unsupervised_dataloader)
+            
+        # do some logging for sanity checking
+        print(f"supervised dataset size: {self.supervised_dataset_size}")
+        print(f"unsupervised dataset size: {self.unsupervised_dataset_size}")
+        print(f"supervised batch size: {self.supervised_batch_size}")
+        print(f"unsupervised batch size: {self.unsupervised_batch_size}")
+        print(f"max dataloader size: {max_dataloader_size}")
+        print(f"target supervised dataset size: {target_supervised_dataset_size}")
+        print(f"target unsupervised dataset size: {target_unsupervised_dataset_size}")
+        # print(f"supervised dataloader size: {len(self.supervised_dataloader)}")
+        # print(f"unsupervised dataloader size: {len(self.unsupervised_dataloader)}")
+        
+        
         
     def __iter__(self) -> _BaseDataLoaderIter:
         if self.unsupervised_dataset is None:
@@ -99,4 +151,4 @@ class MixedDataLoader(DataLoader):
         if self.unsupervised_dataset is None:
             return len(self.supervised_dataloader)
         else:
-            return max(len(self.supervised_dataloader), len(self.unsupervised_dataloader))
+            return min(len(self.supervised_dataloader), len(self.unsupervised_dataloader))

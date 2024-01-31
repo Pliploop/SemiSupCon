@@ -7,6 +7,8 @@ from torch import optim
 from pytorch_lightning.cli import OptimizerCallable
 from SemiSupCon.models.semisupcon import SemiSupCon
 from torchmetrics.functional import auroc, average_precision
+from SemiSupCon.models.utils import confusion_matrix
+import numpy as np
 
 class FinetuneSemiSupCon(pl.LightningModule):
     
@@ -34,9 +36,6 @@ class FinetuneSemiSupCon(pl.LightningModule):
         if self.checkpoint:
             self.load_encoder_weights_from_checkpoint(self.checkpoint)
             
-        if self.checkpoint_head:
-            self.mlp.load_state_dict(torch.load(self.checkpoint_head))
-            
         if self.freeze_encoder:
             self.semisupcon.freeze()
             self.semisupcon.eval()
@@ -57,11 +56,31 @@ class FinetuneSemiSupCon(pl.LightningModule):
             self.head = nn.Linear(512, self.n_classes, bias=False)
             
         
+        if self.checkpoint_head:
+            self.head.load_state_dict(torch.load(self.checkpoint_head)['state_dict'], strict = False)
+            
+            
+        if self.task == 'mtat_top50':
+            self.class_names = ['guitar', 'classical', 'slow', 'techno', 'strings', 'drums',
+       'electronic', 'rock', 'fast', 'piano', 'ambient', 'beat', 'violin',
+       'vocal', 'synth', 'female', 'indian', 'opera', 'male', 'singing',
+       'vocals', 'no vocals', 'harpsichord', 'loud', 'quiet', 'flute', 'woman',
+       'male vocal', 'no vocal', 'pop', 'soft', 'sitar', 'solo', 'man',
+       'classic', 'choir', 'voice', 'new age', 'dance', 'female vocal',
+       'male voice', 'beats', 'harp', 'cello', 'no voice', 'weird', 'country',
+       'female voice', 'metal', 'choral']
+        else:
+            self.class_names = None
+            
+        
         
     def load_encoder_weights_from_checkpoint(self,checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
         self.semisupcon.load_state_dict(checkpoint['state_dict'], strict = False)
         
+    def load_head_weights_from_checkpoint(self,checkpoint_path):
+        checkpoint = torch.load(checkpoint_path)
+        self.head.load_state_dict(checkpoint['state_dict'], strict = False)
         
     def forward(self,x):
         
@@ -158,16 +177,69 @@ class FinetuneSemiSupCon(pl.LightningModule):
         loss = self.loss_fn(preds,ground_truth.float())
         aurocs = auroc(preds,ground_truth,task = 'multilabel',num_labels = self.n_classes)
         ap_score = average_precision(preds,ground_truth,task = 'multilabel',num_labels = self.n_classes)
+        cmat = confusion_matrix(preds,ground_truth,self.n_classes).cpu().numpy()
+        # normalize the cmatrix row-wise
+        cmat = cmat.astype('float') / cmat.sum(axis=1)[:, np.newaxis]
         
         self.log('test_loss',loss, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
         self.log('test_auroc',aurocs, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
         self.log('test_ap',ap_score, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
         
+        # make a pretty matplotlib heatmap of the confusion matrix
+        fig, ax = plt.subplots(figsize=(30,30))
+        im = ax.imshow(cmat)
+        
+        # We want to show all ticks...
+        ax.set_xticks(np.arange(len(self.class_names)))
+        ax.set_yticks(np.arange(len(self.class_names)))
+        # ... and label them with the respective list entries
+        ax.set_xticklabels(self.class_names)
+        ax.set_yticklabels(self.class_names)
+        
+        # Rotate the tick labels and set their alignment.
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+                    rotation_mode="anchor")
+        
+        # Loop over data dimensions and create text annotations.
+        for i in range(len(self.class_names)):
+            
+            for j in range(len(self.class_names)):
+                # round to 2 decimal places
+                leg = round(cmat[i,j],2)  
+                text = ax.text(j, i, leg,
+                               ha="center", va="center", color="w")
+                
+        ax.set_title("Confusion matrix")
+        fig.tight_layout()
+        self.logger.log_image(
+            'confusion_matrix', [wandb.Image(fig)])
+        
+        
+        wandb.log({"Confusion Matrix":self.custom_wandb_confusion_matrix(cmat)})
+        
         self.agg_preds = []
         self.agg_ground_truth = []
     
     
+    def custom_wandb_confusion_matrix(self,confusion_matrix):
+        data = []
+        for i in range(confusion_matrix.shape[0]):
+            for j in range(confusion_matrix.shape[1]):
+                data.append([self.class_names[i],self.class_names[j],confusion_matrix[i,j]])
+            
+        fields = {
+            'target': 'target',
+            'prediction': 'prediction',
+            'value': 'value'
+        }
         
+        return wandb.plot_table(
+            "Confusion matrix",
+            wandb.Table(data=data, columns=["target", "prediction", "value"]),
+            fields,
+            {'title': 'Confusion matrix'}
+        )
+                
         
     
     def configure_optimizers(self):

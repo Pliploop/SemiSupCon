@@ -1,0 +1,6 @@
+encoder: 
+    class_path: SemiSupCon.models.encoders.tune.TunePlus
+    init_args:
+      in_channels: 11
+      n_classes: 1
+      eval_layer: null
