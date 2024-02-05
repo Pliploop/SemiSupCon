@@ -213,3 +213,20 @@ class SemiSupCon(pl.LightningModule):
             optimizer = self.optimizer(self.parameters())
             
         return optimizer
+    
+    def prototype_inference(self,prototypes,wav):
+        
+        ## prototypes is of shape [n_classes,d_model]
+        ## we want to return the similarity of each sample to each prototype
+        
+        ## we will use the cosine similarity
+        with torch.no_grad():
+            encoded = self.encoder(wav)
+            projected = self.proj_head(encoded)
+            
+        similarities = torch.nn.functional.cosine_similarity(projected.unsqueeze(1),prototypes.unsqueeze(0),dim=-1)
+        
+        
+        return similarities.mean(0)
+    
+    

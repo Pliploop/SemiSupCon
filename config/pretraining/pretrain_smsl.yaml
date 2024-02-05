@@ -42,7 +42,7 @@ trainer:
   default_root_dir: null
 model:
   encoder: 
-    class_path: SemiSupCon.models.encoders.samplecnn.SampleCNN
+    class_path: SemiSupCon.models.encoders.tune.TunePlus
   temperature: 0.1
   optimizer:
     class_path: torch.optim.Adam
@@ -59,10 +59,10 @@ data:
   transform: true
   n_classes: 50
   batch_size: 96
-  num_workers: 64
+  num_workers: 32
   val_split: 0.1
-  supervised_data_p: 0.8
-  intrabatch_supervised_p: 0.8
+  supervised_data_p: 0.2
+  intrabatch_supervised_p: 0.2
   fully_supervised: false
 log: false
 log_model: false

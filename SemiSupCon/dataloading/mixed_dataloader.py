@@ -9,6 +9,7 @@ from torch.utils.data.dataloader import _BaseDataLoaderIter
 import numpy as np
 import torch
 from torch.utils.data.dataloader import _BaseDataLoaderIter
+from tqdm import tqdm
 
 
 class CustomDataLoderIter(_BaseDataLoaderIter):
@@ -44,7 +45,7 @@ class CustomDataLoderIter(_BaseDataLoaderIter):
 
 class MixedDataLoader(DataLoader):
     
-    def __init__(self, supervised_dataset, unsupervised_dataset, supervised_dataset_percentage = 1, in_batch_supervised_percentage = 0.5, *args, **kwargs):
+    def __init__(self, supervised_dataset, unsupervised_dataset, supervised_dataset_percentage = 1, in_batch_supervised_percentage = 0.5, n_classes=10, *args, **kwargs):
         super().__init__(dataset = None, *args, **kwargs)
         
         self.supervised_dataset = supervised_dataset
@@ -53,6 +54,7 @@ class MixedDataLoader(DataLoader):
         self.in_batch_supervised_percentage = in_batch_supervised_percentage
         self.supervised_batch_size = 0
         self.unsupervised_batch_size = 0
+        self.n_classes= n_classes
         
         # if self.supervised_dataset is None:
         #     self.supervised_dataset_size = 0
@@ -139,9 +141,9 @@ class MixedDataLoader(DataLoader):
         
         
     def __iter__(self) -> _BaseDataLoaderIter:
-        if self.unsupervised_dataset is None:
+        if self.unsupervised_dataset is None or len(self.unsupervised_dataset) == 0:
             return iter(self.supervised_dataloader)
-        if self.supervised_dataset is None:
+        if self.supervised_dataset is None or len(self.supervised_dataset) == 0:
             return iter(self.unsupervised_dataloader)
         return CustomDataLoderIter(self.supervised_dataloader, self.unsupervised_dataloader)
     
@@ -152,3 +154,45 @@ class MixedDataLoader(DataLoader):
             return len(self.supervised_dataloader)
         else:
             return min(len(self.supervised_dataloader), len(self.unsupervised_dataloader))
+        
+        
+    def get_prototypes(self, model, n = None):
+        # get a prototype for each class in the form of the centroid of the embeddings of the samples of that class
+
+        # send model to gpu if available
+        if torch.cuda.is_available():
+            model.to('cuda')
+
+        # get the d_model by checking the shape of the last layer of {model_layer}
+        d_model = model.proj_head[-1].weight.shape[0]
+        model.eval()
+        model.freeze()
+
+        prototypes = torch.zeros(self.n_classes, d_model).to(model.device)  # Initialize the prototypes
+        class_counts = torch.zeros(self.n_classes).to(model.device)  # Initialize the counts of each class
+
+        if n is None:
+            n = len(self)
+        else:
+            # n is the number of samples wanted to take batch size into account
+            n = int(np.ceil(n / self.batch_size))
+
+        for idx in tqdm(range(n)):  # Iterate over batches from the DataLoader
+            data = next(iter(self))
+            audio = data['audio'].to(model.device)
+            labels = data['labels'].to(model.device)
+
+            with torch.no_grad():
+                out = model(audio)
+
+            encoded = out['projected']
+
+            for i in range(self.n_classes):
+                # if class i is in the labels then add encoded to prototypes[i]
+                # print(labels.shape)
+                # mask = (labels[:, i] == 1).any(dim = 1)  # Find where class i is in the labels
+                mask = (labels[:, 0, i] == 1)
+                prototypes[i] += encoded[mask].sum(dim=0)  # Sum all the encoded vectors where class i is present
+                class_counts[i] += mask.float().sum()  # Count how many times class i is present
+
+        return prototypes / class_counts.unsqueeze(1)

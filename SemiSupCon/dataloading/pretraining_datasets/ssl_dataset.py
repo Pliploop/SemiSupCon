@@ -31,11 +31,11 @@ class SelfSupervisedDataset(Dataset):
         
         path = os.path.join(self.data_dir, self.annotations.iloc[index]['file_path'])
         if self.allow_overlapping == False:
-            audio = load_random_audio_chunk(path, self.global_target_samples, self.target_sample_rate)
+            audio = load_random_audio_chunk(path, self.global_target_samples, self.target_sample_rate, n_augmentations=self.n_augmentations)
         else:
             audio = load_full_audio(path, self.target_samples, self.target_sample_rate)
         
-        
+        print(audio.shape)
         if audio is None:
             return self[index + 1]
         

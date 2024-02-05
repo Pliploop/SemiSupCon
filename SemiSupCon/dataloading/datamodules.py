@@ -6,6 +6,7 @@ from torch.utils.data import random_split
 import pandas as pd
 import numpy as np
 from torch_audiomentations import *
+import json
 
 from SemiSupCon.dataloading import *
 from SemiSupCon.dataloading.custom_augmentations import *
@@ -113,7 +114,7 @@ class DataModuleSplitter:
         annotations.loc[:,'labels'] = temp_labels
         annotations = pd.concat([supervised_annotations, unsupervised_annotations])
         
-        annotations = annotations[['file_path', 'labels','split']]
+        # annotations = annotations[['file_path', 'labels','split']]
         
         if drop :
             annotations = annotations[annotations['labels'].notna()]
@@ -128,7 +129,6 @@ class DataModuleSplitter:
 
         top_50_labels = labels.sum(axis=0).sort_values(ascending=False).head(50).index
         labels = labels[top_50_labels]
-        print(labels.columns)
         
         
         ## rename the columns to match the default annotations
@@ -153,17 +153,12 @@ class DataModuleSplitter:
         annotations.loc[annotations['file_path'].str[:2].isin(test_folders), 'split'] = 'test'
 
 
-        # n_supervised = int(len(annotations) * self.supervised_data_p)
-        # shuffle =  np.random.permutation(len(annotations))
-        # unsupervised_indices = shuffle[n_supervised:]
-        # temp_labels = annotations['labels']
-        # temp_labels.iloc[unsupervised_indices] = None
-        # annotations.loc[:,'labels'] = temp_labels
-
         annotations = pd.concat([annotations, unsupervised_annotations])
         
+        class2idx = {c: i for i, c in enumerate(labels.columns)}
+        idx2class = {i: c for i, c in enumerate(labels.columns)}
 
-        return annotations
+        return annotations, idx2class
     
     def get_mtat_all_annotations(self):
         
@@ -182,18 +177,10 @@ class DataModuleSplitter:
         annotations = annotations.rename(columns={'mp3_path':'file_path'})
         self.n_classes = len(labels.columns)
         
+        class2idx = {c: i for i, c in enumerate(labels.columns)}
+        idx2class = {i: c for i, c in enumerate(labels.columns)}
         
-        # n_supervised = int(len(annotations) * self.supervised_data_p)
-        # shuffle =  np.random.permutation(len(annotations))
-        # unsupervised_indices = shuffle[n_supervised:]
-        # temp_labels = annotations['labels']
-        # temp_labels.iloc[unsupervised_indices] = None
-        # annotations.loc[:,'labels'] = temp_labels
-        # annotations = annotations[['file_path', 'labels','split']]
-        
-        
-        
-        return annotations
+        return annotations, idx2class
         
         
     def get_default_annotations(self):
@@ -223,31 +210,147 @@ class DataModuleSplitter:
             val_annotations.loc[:,'split'] = 'val'
             annotations = pd.concat([train_annotations, val_annotations])
             
-        return annotations
+        return annotations, None
         
     def get_gtzan_annotations(self):
+        audio_path = "/import/c4dm-datasets/gtzan_torchaudio/genres"
+        annotations = pd.read_csv("data/gtzan_annotations.csv")
+
+
+        # do a random split of the data into train, val and test, put this into the dataframe as a column "split"
+        annotations["split"] = np.random.choice(["train", "val", "test"], size=len(annotations), p=[
+                                                1-self.val_split-self.val_split, self.val_split, self.val_split])
         
-        return 
+        
+        self.n_classes = len(annotations['genre'].unique())
+        
+        annotations['file_path'] = audio_path + '/' +annotations['genre']+ '/' + annotations['filename']
+        
+        class2idx = {c: i for i, c in enumerate(annotations['genre'].unique())}
+        idx2class = {i: c for i, c in enumerate(annotations['genre'].unique())}
+        annotations['labels'] = annotations['genre'].apply(lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
+        
+        return annotations, idx2class
+    
+    def get_giantsteps_annotations(self):
+        audio_path = "/homes/jpmg86/giantsteps-key-dataset/audio"
+        annotations_path = "/homes/jpmg86/giantsteps-key-dataset/annotations/key"
+        
+        # every file in the annotations path is of shape {filename}.LOFI.key
+        # and when read contains the key as a string.
+        # build the annotations file with the audio files in audio_path and the keys in the annotations_path
+        annotations = pd.DataFrame(os.listdir(audio_path), columns = ['file_path'])
+        annotations['file_path']
+        annotations['split'] = 'train'
+        annotations['labels'] = None
+        annotations['annotation_file'] = annotations_path + '/' + annotations['file_path'].str[:-4] + '.key'
+        annotations['file_path'] = audio_path + '/' + annotations['file_path']
+        
+        for idx, row in annotations.iterrows():
+            with open(row['annotation_file'], 'r') as f:
+                key = f.read()
+                annotations.loc[idx,'key'] = key
+                
+        # do a random split of the data into train, val and test, put this into the dataframe as a column "split"
+        
+        annotations["split"] = np.random.choice(["train", "val", "test"], size=len(annotations), p=[
+                                                1-self.val_split-self.val_split, self.val_split, self.val_split])
+        
+        class2idx = {c: i for i, c in enumerate(annotations['key'].unique())}
+        idx2class = {i: c for i, c in enumerate(annotations['key'].unique())}
+        
+        annotations['labels'] = annotations['key'].apply(lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
+        
+        return annotations, idx2class
+        
+        
     
     def get_emomusic_annotations(self):
         
         return
     
-    def get_nsynth_pitch_annotations(self):
-        
-        return
-    
     def get_nsynth_instr_annotations(self):
-        
-        return
+        return self.get_nsynth_annotations('instrument_family')
     
+    def get_nsynth_instr_source_annotations(self):
+        return self.get_nsynth_annotations('instrument')
+    
+    def get_nsynth_pitch_annotations(self):
+        return self.get_nsynth_annotations('pitch')
+    
+    def get_nsynth_qualities_annotations(self):
+        annotations = self.get_nsynth_annotations('instrument_family')
+        annotations['labels'] = annotations["qualities"]
+        self.n_classes = len(annotations['labels'][0])
+        return annotations
+    
+    def get_nsynth_annotations(self,class_name):
+        all_data = {}
+        path_dir = '/import/c4dm-datasets/nsynth/nsynth'
+        for split in 'train', 'valid', 'test':
+            path = os.path.join(path_dir+'-'+split, 'examples.json')
+            with open(path, 'r') as f:
+                data = json.load(f)
+                # add split, data is of shape {sample_key : dict}. We want dict[split] = split
+                for key in data.keys():
+                    data[key]['split'] = split
+                    
+                all_data.update(data)
+                
+        annotations = pd.DataFrame(list(all_data.values()))
+        annotations['file_path'] = path_dir +'-' + annotations['split'] + '/audio/' + annotations['note_str'] + '.wav'
+    
+        # get the number of classes for column "instrument_family"
+        self.n_classes = len(annotations[class_name].unique())
+        # add 'labels' to the dataframe as a one-hot of classes to int
+        
+        class2idx = {c: i for i, c in enumerate(annotations[class_name].unique())}
+        idx2class = {i: c for i, c in enumerate(annotations[class_name].unique())}
+        annotations['labels'] = annotations[class_name].apply(lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
+        
+        return annotations, idx2class
+        
+            
     def get_vocalset_singer_annotations(self):
+        annotations = pd.DataFrame(columns=['file_path', 'labels'])
+        data_dir = '/import/c4dm-datasets/VocalSet1-2/data_by_singer'
         
-        return
-    
     def get_vocalset_technique_annotations(self):
         
-        return
+        data_dir = '/import/c4dm-datasets/VocalSet1-2'
+        train_singers = pd.read_csv(os.path.join(data_dir, 'train_singers_technique.txt'))
+        test_singers = pd.read_csv(os.path.join(data_dir, 'test_singers_technique.txt'))
+        train_singers.columns = ['id']
+        test_singers.columns = ['id']
+        
+        train_singers['split'] = 'train'
+        test_singers['split'] = 'test'
+        
+        id_to_split = pd.concat([train_singers, test_singers])
+        id_to_split['id'] = id_to_split.id.apply(lambda x: x[0]+x[-1])
+        
+        annotations = pd.DataFrame(columns=['file_path', 'labels', 'split'])
+        
+        for root, dirs, files in os.walk(os.path.join(data_dir, 'data_by_technique')):
+            for file in files:
+                if file.endswith(".wav"):
+                    singer_id = file.split('_')[0]
+                    technique = root.split('/')[-1]
+                    split = annotations[annotations['id'] == singer_id]['split']
+                    annotations = annotations.append({'file_path': os.path.join(root, file), 'label_name': technique, 'split': split}, ignore_index=True)
+        
+        class2idx = {c: i for i, c in enumerate(annotations['label_name'].unique())}
+        idx2class = {i: c for i, c in enumerate(annotations['label_name'].unique())}
+        annotations['labels'] = annotations['label_name'].apply(lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
+        # split the train data into train and val
+        annotations['split'] = np.random.choice(["train", "val"], size=len(annotations), p=[1-self.val_split, self.val_split])
+        
+        
+        return annotations, idx2class
     
     def get_mtg_top50_annotations(self):
         
@@ -266,7 +369,6 @@ class DataModuleSplitter:
         return
     
     def get_openmic_annotations(self):
-        
         return
     
 class MixedDataModule(pl.LightningDataModule):
@@ -379,10 +481,10 @@ class MixedDataModule(pl.LightningDataModule):
         
             
     def train_dataloader(self):
-        return MixedDataLoader(self.train_supervised_dataset, self.train_self_supervised_dataset, self.supervised_dataset_percentage, self.in_batch_supervised_percentage, batch_size = self.batch_size,  num_workers = self.num_workers)
+        return MixedDataLoader(self.train_supervised_dataset, self.train_self_supervised_dataset, self.supervised_dataset_percentage, self.in_batch_supervised_percentage, batch_size = self.batch_size,  num_workers = self.num_workers, n_classes = self.n_classes)
         
     def val_dataloader(self):
-        return MixedDataLoader(self.val_supervised_dataset, self.val_self_supervised_dataset, self.supervised_dataset_percentage, self.in_batch_supervised_percentage, batch_size = self.batch_size, num_workers = self.num_workers)
+        return MixedDataLoader(self.val_supervised_dataset, self.val_self_supervised_dataset, self.supervised_dataset_percentage, self.in_batch_supervised_percentage, batch_size = self.batch_size, num_workers = self.num_workers, n_classes = self.n_classes)
     
     def test_dataloader(self):
-        return MixedDataLoader(self.test_supervised_dataset, None, 1, 1, batch_size = 1, num_workers = self.num_workers)
+        return MixedDataLoader(self.test_supervised_dataset, None, 1, 1, batch_size = 1, num_workers = self.num_workers, n_classes = self.n_classes)
