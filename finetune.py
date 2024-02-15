@@ -30,6 +30,9 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
             else:
                 new_experiment_name = experiment_name
                 
+            if not os.path.exists(os.path.join(self.config['ckpt_path'], new_experiment_name)):
+                os.makedirs(os.path.join(self.config['ckpt_path'], new_experiment_name))
+                
             with open(os.path.join(os.path.join(self.config['ckpt_path'], new_experiment_name), "config.yaml"), 'w') as outfile:
                 yaml.dump(config, outfile, default_flow_style=False)
 
@@ -52,6 +55,7 @@ class MyLightningCLI(LightningCLI):
         parser.add_argument("--resume_from_checkpoint", default=None)
         parser.add_argument("--resume_id", default=None)
         parser.add_argument('--test', default=False)
+        parser.add_argument('--early_stopping_patience', default=5)
 
 if __name__ == "__main__":
     
@@ -68,7 +72,7 @@ if __name__ == "__main__":
         previous_experiment_name = ''
 
     if cli.config.log:
-        logger = WandbLogger(project="SemiSupCon-finetuning",id = cli.config.resume_id)
+        logger = WandbLogger(project="SemiSupCon-finetuning2",id = cli.config.resume_id)
         experiment_name = logger.experiment.name+f"_finetune_{previous_experiment_name}_{cli.config['model']['task']}"
         ckpt_path = cli.config.ckpt_path
     else:
@@ -109,16 +113,23 @@ if __name__ == "__main__":
         
         early_stopping_callback = EarlyStopping(
             monitor='val_loss',
-            patience=5,
+            patience=cli.config.early_stopping_patience,
             mode='min'
         )
         
         cli.trainer.callbacks = cli.trainer.callbacks[:-1]+[recent_callback, best_callback, best_val_callback, early_stopping_callback]
     
+    # passing class names and idx2class to the model for metrics logging
+    idx2class = cli.datamodule.idx2class
+    class_names = cli.datamodule.class_names
+    
+    cli.model.set_idx2class(idx2class)
+    cli.model.set_class_names(class_names)
     
     if not cli.config.test:    
         cli.trainer.fit(model=cli.model, datamodule=cli.datamodule)
         if logger is not None:
             cli.model.load_head_weights_from_checkpoint(best_val_callback.best_model_path)
+            
         
     cli.trainer.test(model=cli.model, datamodule=cli.datamodule)

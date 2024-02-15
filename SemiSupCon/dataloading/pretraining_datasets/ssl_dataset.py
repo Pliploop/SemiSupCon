@@ -35,7 +35,6 @@ class SelfSupervisedDataset(Dataset):
         else:
             audio = load_full_audio(path, self.target_samples, self.target_sample_rate)
         
-        print(audio.shape)
         if audio is None:
             return self[index + 1]
         
@@ -43,7 +42,6 @@ class SelfSupervisedDataset(Dataset):
         
         labeled = torch.tensor(0)
         labels = torch.zeros(self.n_classes)
-        
         
         #add n_augmentation dimension as the first dimension
         labels = labels.unsqueeze(0).repeat(self.n_augmentations,1)

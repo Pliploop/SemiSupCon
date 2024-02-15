@@ -50,7 +50,7 @@ model:
       lr: 0.0001
 data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
-  task: 'mtat_top50'
+  sl_task: 'mtat_top50'
   target_length: 2.7
   target_sample_rate: 22050
   n_augmentations: 2
@@ -62,6 +62,7 @@ data:
   supervised_data_p: 1
   intrabatch_supervised_p: 1
   fully_supervised: true
+  use_test_set: true
 log: false
 log_model: false
 ckpt_path: Checkpoints

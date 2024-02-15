@@ -74,3 +74,4 @@ log_model: false
 ckpt_path: Checkpoints-finetuning
 resume_id: null
 resume_from_checkpoint: null
+early_stopping_patience: 15

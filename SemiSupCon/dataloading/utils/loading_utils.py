@@ -18,17 +18,14 @@ def load_random_audio_chunk(path, target_samples, target_sample_rate, allow_over
         n_frames = info.frames
     
     new_target_samples = int(target_samples * sample_rate / target_sample_rate)
-    print(f'loading {new_target_samples} samples')
-    print(f'from {n_frames} samples')
-    print(f'from {sample_rate} sample_rate')
-    print(f'to {target_sample_rate} sample_rate')
     
     if n_frames < new_target_samples:
-        print(f'File {path} is too short, tried to load {new_target_samples} samples, but only has {n_frames} samples')
+        # print(f'File {path} is too short, tried to load {new_target_samples} samples, but only has {n_frames} samples')
         if n_frames < new_target_samples / n_augmentations:
             return None
         else:
             one_chunk = int(new_target_samples / n_augmentations)
+            audios = []
             for i in range(n_augmentations):
                 start_idx = np.random.randint(low=0, high=n_frames - one_chunk)
                 waveform, sample_rate = sf.read(
@@ -36,19 +33,21 @@ def load_random_audio_chunk(path, target_samples, target_sample_rate, allow_over
                 waveform = torch.Tensor(waveform.transpose())
                 audio = convert_audio(
                     waveform, sample_rate, target_sample_rate, 1)
-                if i == 0:
-                    audios = audio
-                else:
-                    audios = torch.cat((audios, audio), dim=0)
+                audios.append(audio)
+            audio = torch.cat(audios, dim=0)
+            return audio
     else:
         start_idx = np.random.randint(low=0, high=n_frames - new_target_samples)
     
     
-    
-        waveform, sample_rate = sf.read(
-            path, start=start_idx, stop=start_idx + new_target_samples, dtype='float32', always_2d=True)
+        try:
+            waveform, sample_rate = sf.read(
+                path, start=start_idx, stop=start_idx + new_target_samples, dtype='float32', always_2d=True)
 
-        waveform = torch.Tensor(waveform.transpose())
+            waveform = torch.Tensor(waveform.transpose())
+        except Exception as e:
+            print(e)
+            return None
     
     audio = convert_audio(
         waveform, sample_rate, target_sample_rate, 1)
@@ -56,11 +55,15 @@ def load_random_audio_chunk(path, target_samples, target_sample_rate, allow_over
     return audio
 
 def load_audio_and_split_in_chunks(path, target_samples, target_sample_rate):
-    info = sf.info(path)
-    sample_rate = info.samplerate
-    
-    waveform, sample_rate = sf.read(
+    try:
+        info = sf.info(path)
+        sample_rate = info.samplerate
+        waveform, sample_rate = sf.read(
         path, dtype='float32', always_2d=True)
+    except Exception as e:
+        print(e)
+        return None
+    
 
     waveform = torch.Tensor(waveform.transpose())
     encodec_audio = convert_audio(
@@ -74,11 +77,16 @@ def load_audio_and_split_in_chunks(path, target_samples, target_sample_rate):
 
 
 def load_full_audio(path, target_sample_rate):
-    info = sf.info(path)
-    sample_rate = info.samplerate
+    try:
+        info = sf.info(path)
+        sample_rate = info.samplerate
+        
+        waveform, sample_rate = sf.read(
+            path, dtype='float32', always_2d=True)
+    except Exception as e:
+        print(e)
+        return None
     
-    waveform, sample_rate = sf.read(
-        path, dtype='float32', always_2d=True)
 
     waveform = torch.Tensor(waveform.transpose())
     encodec_audio = convert_audio(

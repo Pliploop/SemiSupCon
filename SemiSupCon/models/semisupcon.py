@@ -10,7 +10,7 @@ from pytorch_lightning.cli import OptimizerCallable
 class SemiSupCon(pl.LightningModule):
     
     def __init__(self, encoder, 
-        optimizer: OptimizerCallable = None, temperature = 0.1):
+        optimizer: OptimizerCallable = None, temperature = 0.1, pos_thresh = 1):
         super().__init__()
         self.loss = SSNTXent(temperature = temperature)
         self.encoder = encoder
@@ -21,6 +21,7 @@ class SemiSupCon(pl.LightningModule):
         )
         
         self.optimizer = optimizer
+        self.pos_thresh = pos_thresh
         
     def forward(self,x):
         
@@ -118,7 +119,7 @@ class SemiSupCon(pl.LightningModule):
         
         if self.logger:
             
-            if self.global_step % 200 == 0:
+            if self.global_step % 2000 == 0:
                 self.log_similarity(semisl_sim,'semisl_sim')
                 self.log_similarity(ssl_sim,'ssl_sim')
                 self.log_similarity(sl_sim,'sl_sim')
@@ -201,6 +202,16 @@ class SemiSupCon(pl.LightningModule):
         
         x = (labels[i_indices] == labels[j_indices])*(labels[i_indices]==1)
         contrastive_matrix = x.any(dim=-1).int()
+        
+        ## with self.pos_thresh = 1, we consider that if any of the labels are the same, then the examples are similar
+        ## with self.pos_thresh = 2, we consider that if two or more labels are the same, then the examples are similar
+        
+        # contrastive_matrix = contrastive_matrix * (x.sum(-1) >= self.pos_thresh).int()
+        
+        # weighing strategy : sum of classes in common over number of classes for i and j
+        # num_classes_i = labels[i_indices].sum(-1)
+        # num_classes_j = labels[j_indices].sum(-1)
+        # contrastive_matrix = contrastive_matrix * (2 * x.sum(-1) / (num_classes_i + num_classes_j)).float()
         
         return contrastive_matrix
     

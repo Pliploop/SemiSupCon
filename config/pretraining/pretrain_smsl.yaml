@@ -9,9 +9,9 @@ trainer:
   logger: null
   callbacks: null
   fast_dev_run: false
-  max_epochs: 1000
+  max_epochs: -1
   min_epochs: null
-  max_steps: -1
+  max_steps: 200000
   min_steps: null
   max_time: null
   limit_train_batches: null
@@ -42,7 +42,7 @@ trainer:
   default_root_dir: null
 model:
   encoder: 
-    class_path: SemiSupCon.models.encoders.tune.TunePlus
+    class_path: SemiSupCon.models.encoders.samplecnn.SampleCNN
   temperature: 0.1
   optimizer:
     class_path: torch.optim.Adam
@@ -52,7 +52,7 @@ data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
   task: 'mtat_top50'
   sl_task: 'mtat_top50'
-  ssl_task: 'mtat_top50'
+  ssl_task: 'fma'
   target_length: 2.7
   target_sample_rate: 22050
   n_augmentations: 2
@@ -61,9 +61,17 @@ data:
   batch_size: 96
   num_workers: 32
   val_split: 0.1
-  supervised_data_p: 0.2
-  intrabatch_supervised_p: 0.2
+  supervised_data_p: 1
+  intrabatch_supervised_p: 0.5
   fully_supervised: false
+  use_test_set: true
+  aug_list:
+  - 'gain'
+  - 'polarity_inversion'
+  - 'add_colored_noise'
+  - 'filtering'
+  - 'pitch_shift'
+  - 'delay'
 log: false
 log_model: false
 ckpt_path: Checkpoints

@@ -9,6 +9,7 @@ from SemiSupCon.models.semisupcon import SemiSupCon
 from torchmetrics.functional import auroc, average_precision
 from SemiSupCon.models.utils import confusion_matrix
 import numpy as np
+from SemiSupCon.models.task_metrics import *
 
 class FinetuneSemiSupCon(pl.LightningModule):
     
@@ -25,6 +26,33 @@ class FinetuneSemiSupCon(pl.LightningModule):
         if self.task == 'mtat_top50':
             self.loss_fn = nn.BCEWithLogitsLoss()
             self.n_classes = 50
+        if self.task == 'mtat_all':
+            self.n_classes = 188
+            self.loss_fn = nn.BCEWithLogitsLoss()
+        if self.task == 'giantsteps':
+            self.loss_fn = nn.CrossEntropyLoss()
+            self.n_classes = 24
+        if self.task == 'nsynth_pitch':
+            self.loss_fn = nn.CrossEntropyLoss()
+            self.n_classes = 112
+        if self.task == 'nsynth_instr_family':
+            self.n_classes = 11
+            self.loss_fn = nn.CrossEntropyLoss()
+        if self.task == 'gtzan':
+            self.n_classes = 10
+            self.loss_fn = nn.CrossEntropyLoss()
+        if self.task == 'mtg_top50':
+            self.n_classes = 50
+            self.loss_fn = nn.BCEWithLogitsLoss()
+        if self.task == 'mtg_genre':
+            self.n_classes = 87
+            self.loss_fn = nn.BCEWithLogitsLoss()
+        if self.task == 'mtg_mood':
+            self.n_classes = 56
+            self.loss_fn = nn.BCEWithLogitsLoss()
+        if self.task == 'mtg_instr':
+            self.n_classes = 40
+            self.loss_fn = nn.BCEWithLogitsLoss()
             
         self.semisupcon = SemiSupCon(encoder)
         self.optimizer = optimizer
@@ -39,6 +67,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
         if self.freeze_encoder:
             self.semisupcon.freeze()
             self.semisupcon.eval()
+            print('Encoder is frozen')
             
             
         self.agg_preds = []
@@ -60,22 +89,29 @@ class FinetuneSemiSupCon(pl.LightningModule):
             self.head.load_state_dict(torch.load(self.checkpoint_head)['state_dict'], strict = False)
             
             
-        if self.task == 'mtat_top50':
-            self.class_names = ['guitar', 'classical', 'slow', 'techno', 'strings', 'drums',
-       'electronic', 'rock', 'fast', 'piano', 'ambient', 'beat', 'violin',
-       'vocal', 'synth', 'female', 'indian', 'opera', 'male', 'singing',
-       'vocals', 'no vocals', 'harpsichord', 'loud', 'quiet', 'flute', 'woman',
-       'male vocal', 'no vocal', 'pop', 'soft', 'sitar', 'solo', 'man',
-       'classic', 'choir', 'voice', 'new age', 'dance', 'female vocal',
-       'male voice', 'beats', 'harp', 'cello', 'no voice', 'weird', 'country',
-       'female voice', 'metal', 'choral']
-        else:
-            self.class_names = None
+        
             
+        self.idx2class = None
+        self.class_names = None
         
+        self.get_metrics = eval(f'{self.task}_metrics')
         
+    def set_idx2class(self,idx2class):
+        self.idx2class = idx2class    
+    
+    def set_class_names(self,class_names):
+        self.class_names = class_names
+    
+    def log_metrics(self,metrics, stage = 'train'):
+        # metrics is a dictionary containing the metric name and the value
+        for k,v in metrics.items():
+            if stage == 'train' or stage == 'val':
+                self.log(f'{stage}_{k}',v, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
+            else:
+                self.log(f'{stage}_{k}',v, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
+
     def load_encoder_weights_from_checkpoint(self,checkpoint_path):
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
         self.semisupcon.load_state_dict(checkpoint['state_dict'], strict = False)
         
     def load_head_weights_from_checkpoint(self,checkpoint_path):
@@ -115,13 +151,15 @@ class FinetuneSemiSupCon(pl.LightningModule):
         loss = self.loss_fn(logits,labels.float())
         
         #get metrics
-        preds = torch.sigmoid(logits)
-        aurocs = auroc(preds,labels,task = 'multilabel',num_labels = self.n_classes)
-        ap_score = average_precision(preds,labels,task = 'multilabel',num_labels = self.n_classes)
+        # preds = torch.sigmoid(logits)
+        # aurocs = auroc(preds,labels,task = 'multilabel',num_labels = self.n_classes)
+        # ap_score = average_precision(preds,labels,task = 'multilabel',num_labels = self.n_classes)
+        
+        train_metrics = self.get_metrics(logits,labels,self.idx2class,self.class_names,self.n_classes)
         
         self.log('train_loss',loss, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
-        self.log('train_auroc',aurocs, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
-        self.log('train_ap',ap_score, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
+        
+        self.log_metrics(train_metrics,stage = 'train')
         
         return loss
     
@@ -135,14 +173,15 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
         loss = self.loss_fn(logits,labels.float())
     
-        #get metrics
-        preds = torch.sigmoid(logits)
-        aurocs = auroc(preds,labels,task = 'multilabel',num_labels = self.n_classes)
-        ap_score = average_precision(preds,labels,task = 'multilabel',num_labels = self.n_classes)
         
-        self.log('val_loss',loss, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
-        self.log('val_auroc',aurocs, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
-        self.log('val_ap',ap_score, on_step = False, on_epoch = True, prog_bar = True, sync_dist = True)
+        #get metrics
+        self.log('val_loss',loss, on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
+        
+        
+        val_metrics = self.get_metrics(logits,labels,self.idx2class,self.class_names,self.n_classes)
+        
+        
+        self.log_metrics(val_metrics,stage = 'val')
         
         return loss
     
@@ -150,6 +189,8 @@ class FinetuneSemiSupCon(pl.LightningModule):
         x = batch
         
         x['audio'] = x['audio'].squeeze(0).unsqueeze(1).unsqueeze(1)
+        if x['audio'].shape[0] > 64:
+            x['audio'] = x['audio'][:64]
         x['labels'] = x['labels'].squeeze(0)
         
         out_ = self(x)
@@ -161,8 +202,8 @@ class FinetuneSemiSupCon(pl.LightningModule):
         logits = logits.mean(0).unsqueeze(0)
         labels = labels[0].unsqueeze(0)
         
-        self.agg_ground_truth.append(labels)
-        self.agg_preds.append(logits)
+        self.agg_ground_truth.append(labels.detach().cpu())
+        self.agg_preds.append(logits.detach().cpu())
         
         loss = self.loss_fn(logits,labels.float())
         return loss
@@ -175,47 +216,50 @@ class FinetuneSemiSupCon(pl.LightningModule):
         preds = torch.sigmoid(preds)
         
         loss = self.loss_fn(preds,ground_truth.float())
-        aurocs = auroc(preds,ground_truth,task = 'multilabel',num_labels = self.n_classes)
-        ap_score = average_precision(preds,ground_truth,task = 'multilabel',num_labels = self.n_classes)
-        cmat = confusion_matrix(preds,ground_truth,self.n_classes).cpu().numpy()
-        # normalize the cmatrix row-wise
-        cmat = cmat.astype('float') / cmat.sum(axis=1)[:, np.newaxis]
+        
+        test_metrics = self.get_metrics(preds,ground_truth,self.idx2class,self.class_names,self.n_classes)
+        
         
         self.log('test_loss',loss, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
-        self.log('test_auroc',aurocs, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
-        self.log('test_ap',ap_score, on_step = False, on_epoch = True, prog_bar = False, sync_dist = True)
+    
+        self.log_metrics(test_metrics,stage = 'test')
         
         # make a pretty matplotlib heatmap of the confusion matrix
-        fig, ax = plt.subplots(figsize=(30,30))
-        im = ax.imshow(cmat)
+        if self.task in ['mtat_top50','giantsteps']:
+            cmat = confusion_matrix(preds,ground_truth,self.n_classes).cpu().numpy()
+        # normalize the cmatrix row-wise
+            cmat = cmat.astype('float') / cmat.sum(axis=1)[:, np.newaxis]
         
-        # We want to show all ticks...
-        ax.set_xticks(np.arange(len(self.class_names)))
-        ax.set_yticks(np.arange(len(self.class_names)))
-        # ... and label them with the respective list entries
-        ax.set_xticklabels(self.class_names)
-        ax.set_yticklabels(self.class_names)
-        
-        # Rotate the tick labels and set their alignment.
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
-                    rotation_mode="anchor")
-        
-        # Loop over data dimensions and create text annotations.
-        for i in range(len(self.class_names)):
+            fig, ax = plt.subplots(figsize=(30,30))
+            im = ax.imshow(cmat)
             
-            for j in range(len(self.class_names)):
-                # round to 2 decimal places
-                leg = round(cmat[i,j],2)  
-                text = ax.text(j, i, leg,
-                               ha="center", va="center", color="w")
+            # We want to show all ticks...
+            ax.set_xticks(np.arange(len(self.class_names)))
+            ax.set_yticks(np.arange(len(self.class_names)))
+            # ... and label them with the respective list entries
+            ax.set_xticklabels(self.class_names)
+            ax.set_yticklabels(self.class_names)
+            
+            # Rotate the tick labels and set their alignment.
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+                        rotation_mode="anchor")
+            
+            # Loop over data dimensions and create text annotations.
+            for i in range(len(self.class_names)):
                 
-        ax.set_title("Confusion matrix")
-        fig.tight_layout()
-        self.logger.log_image(
-            'confusion_matrix', [wandb.Image(fig)])
-        
-        
-        wandb.log({"Confusion Matrix":self.custom_wandb_confusion_matrix(cmat)})
+                for j in range(len(self.class_names)):
+                    # round to 2 decimal places
+                    leg = round(cmat[i,j],2)  
+                    text = ax.text(j, i, leg,
+                                ha="center", va="center", color="w")
+                    
+            ax.set_title("Confusion matrix")
+            fig.tight_layout()
+            self.logger.log_image(
+                'confusion_matrix', [wandb.Image(fig)])
+            
+            
+            wandb.log({"Confusion Matrix":self.custom_wandb_confusion_matrix(cmat)})
         
         self.agg_preds = []
         self.agg_ground_truth = []
@@ -253,3 +297,4 @@ class FinetuneSemiSupCon(pl.LightningModule):
     
     def on_checkpoint_save(self, checkpoint):
         checkpoint['state_dict'] = self.head.state_dict()
+        
