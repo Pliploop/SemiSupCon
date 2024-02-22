@@ -29,7 +29,7 @@ trainer:
   accumulate_grad_batches: 1
   gradient_clip_val: null
   gradient_clip_algorithm: null
-  deterministic: null
+  deterministic: true
   benchmark: null
   inference_mode: true
   use_distributed_sampler: true
@@ -51,7 +51,7 @@ model:
 data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
   task: 'mtat_top50'
-  sl_task: 'mtg_instr'
+  sl_task: 'medleydb'
   ssl_task: 'fma'
   target_length: 2.7
   target_sample_rate: 22050
@@ -60,7 +60,7 @@ data:
   n_classes: 50
   batch_size: 96
   num_workers: 32
-  val_split: 0.2
+  val_split: 0.1
   supervised_data_p: 1
   intrabatch_supervised_p: 0.5
   use_test_set: true
@@ -72,6 +72,7 @@ data:
   - 'filtering'
   - 'pitch_shift'
   - 'delay'
+  severity_modifier: 2
 log: false
 log_model: false
 ckpt_path: Checkpoints

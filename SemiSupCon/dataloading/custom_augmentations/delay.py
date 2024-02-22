@@ -62,7 +62,7 @@ class Delay(BaseWaveformTransform):
         self._min_delay_samples = int(min_delay_ms * sample_rate / 1000)
         self._mode = mode
         self._volume_factor = volume_factor
-        self._repeats = repeats
+        self._repeats = int(repeats)
         self._attenuation = attenuation
         self.debug = debug
 

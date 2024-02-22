@@ -81,6 +81,11 @@ class SemiSupCon(pl.LightningModule):
         positive_mask = out_['semisl_contrastive_matrix']
         negative_mask = torch.ones_like(positive_mask)
         
+        sl_contrastive_matrix = out_['sl_contrastive_matrix']
+        
+        # log the sparsity of the sl_contrastive_matrix and the semisl_contrastive_matrix
+        
+        
         semisl_loss = self.loss(out_['projected'],positive_mask,negative_mask)
         
         self.logging(out_,labeled)
@@ -105,8 +110,8 @@ class SemiSupCon(pl.LightningModule):
         labeled = labeled.bool()
         
         semisl_loss = self.loss(out_['projected'],out_['semisl_contrastive_matrix'], torch.ones_like(out_['semisl_contrastive_matrix']))
-        sl_loss = self.loss(out_['projected'][labeled,:],out_['sl_contrastive_matrix'][labeled, labeled],torch.ones_like(out_['sl_contrastive_matrix'][labeled, labeled]))
-        ssl_loss = self.loss(out_['projected'][~labeled,:],out_['ssl_contrastive_matrix'][~labeled, ~labeled], torch.ones_like(out_['ssl_contrastive_matrix'][~labeled, ~labeled]))
+        sl_loss = self.loss(out_['projected'][labeled,:],out_['sl_contrastive_matrix'][labeled][:,labeled],torch.ones_like(out_['sl_contrastive_matrix'][labeled, labeled]))
+        ssl_loss = self.loss(out_['projected'][~labeled,:],out_['ssl_contrastive_matrix'][~labeled][:,~labeled], torch.ones_like(out_['ssl_contrastive_matrix'][~labeled, ~labeled]))
         
         # get similarities
         semisl_sim = self.loss.get_similarities(out_['projected'])
@@ -117,6 +122,10 @@ class SemiSupCon(pl.LightningModule):
         self.log('sl_loss',sl_loss, on_step = True, on_epoch = True, sync_dist = True)
         self.log('ssl_loss',ssl_loss, on_step = True, on_epoch = True, sync_dist = True)
         
+        semisl_contrastive_matrix = out_['semisl_contrastive_matrix']
+        semisl_contrastive_matrix[torch.eye(semisl_contrastive_matrix.shape[0],device = semisl_contrastive_matrix.device).bool()] = 0
+                
+        
         if self.logger:
             
             if self.global_step % 2000 == 0:
@@ -126,14 +135,16 @@ class SemiSupCon(pl.LightningModule):
                 
                 fig, ax = plt.subplots(1, 1)
                 
-                semisl_contrastive_matrix = out_['semisl_contrastive_matrix']
-                semisl_contrastive_matrix[torch.eye(semisl_contrastive_matrix.shape[0],device = semisl_contrastive_matrix.device).bool()] = 0
                 
                 ax.imshow(semisl_contrastive_matrix.detach(
                 ).cpu().numpy(), cmap="plasma")
                 self.logger.log_image(
                     'target_contrastive_matrix', [wandb.Image(fig)])
                 plt.close(fig)
+                
+            if self.global_step % 100 == 0:	
+                self.log('sparsity_sl',1 - semisl_contrastive_matrix[labeled][:,labeled].cpu().numpy().mean(),on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
+                self.log('sparsity_semisl',1 - semisl_contrastive_matrix.cpu().numpy().mean(),on_step = True, on_epoch = True, prog_bar = True, sync_dist = True)
     
     def log_similarity(self,similarity,name):
         fig, ax = plt.subplots(1, 1)
@@ -203,15 +214,12 @@ class SemiSupCon(pl.LightningModule):
         x = (labels[i_indices] == labels[j_indices])*(labels[i_indices]==1)
         contrastive_matrix = x.any(dim=-1).int()
         
-        ## with self.pos_thresh = 1, we consider that if any of the labels are the same, then the examples are similar
-        ## with self.pos_thresh = 2, we consider that if two or more labels are the same, then the examples are similar
-        
-        # contrastive_matrix = contrastive_matrix * (x.sum(-1) >= self.pos_thresh).int()
+        # contrastive_matrix = (x.sum(-1) >= self.pos_thresh).int()
         
         # weighing strategy : sum of classes in common over number of classes for i and j
         # num_classes_i = labels[i_indices].sum(-1)
         # num_classes_j = labels[j_indices].sum(-1)
-        # contrastive_matrix = contrastive_matrix * (2 * x.sum(-1) / (num_classes_i + num_classes_j)).float()
+        # contrastive_matrix = (2 * x.sum(-1) / (num_classes_i + num_classes_j)).float()
         
         return contrastive_matrix
     

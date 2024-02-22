@@ -72,6 +72,7 @@ data:
   - 'filtering'
   - 'pitch_shift'
   - 'delay'
+  severity_modifier: 2
 log: false
 log_model: false
 ckpt_path: Checkpoints

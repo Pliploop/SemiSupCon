@@ -4,6 +4,7 @@ from SemiSupCon.dataloading.utils.loading_utils import load_audio_and_split_in_c
 import os
 from tqdm import tqdm
 from torch.utils.data import Subset
+import pandas as pd
 
 
 
@@ -67,36 +68,66 @@ class SupervisedDataset(Dataset):
             
         return waveform
     
-    def get_representations_for_reduction(self, model, n = None):
+    def get_representations_for_reduction(self, model, n = None, bottleneck = 'encoded'):
         
         # get the d_model by checking the shape of the last layer of {model_layer}
         
-        d_model = model.proj_head[-1].weight.shape
+        if bottleneck == 'encoded':
+            d_model = model.proj_head[-1].weight.shape[1]
+        else:
+            d_model = model.proj_head[-1].weight.shape[0]
+            
+        #pretty print the d_model and the bottleneck
+        print(f'd_model: {d_model}, bottleneck: {bottleneck}')
         model.eval()
         model.freeze()
         
-        representations = torch.zeros(n, d_model)
-        labels = torch.zeros(n, self.n_classes)
+        # get model device 
+        device = next(model.parameters()).device
+        
         
         if n is None:
             n = len(self)
+        
+        representations = torch.zeros(n, d_model)
+        labels = torch.zeros(n, self.n_classes)
+        rows = []
             
         for idx in tqdm(range(n)):
                 
                 data = self[idx]
-                audio = data['audio']
-                labels = data['labels']
+                audio = data['audio'].to(device)
+                if audio.dim() == 2:
+                    audio = audio.unsqueeze(1)
+                if audio.dim() == 3:
+                    audio = audio.unsqueeze(1)
+                label = data['labels']
+                
+                if audio.shape[0] > 64:
+                    audio = audio[:64]
                 
                 with torch.no_grad():
                     out = model(audio)
                 
-                encoded = out['encoded']
-                representations[idx] = encoded
-                labels[idx] = labels
+                encoded = out[bottleneck].mean(0).unsqueeze(0)
+                representations[idx,:] = encoded
+                labels[idx,:] = label
+                # labels are one-hot encoded, get the index of the class
+                labels_idx = torch.argmax(labels, dim = 1).tolist()
+                if self.idx2class is not None:
+                    labels_names  = [self.idx2class[i] for i in labels_idx]
+                else:
+                    labels_names = None
+                row = self.annotations.iloc[idx]
+                rows.append(row)
                 
+        dataframe_out = pd.DataFrame(rows)
         return {
             'representations': representations,
-            'labels': labels
+            'labels': labels,
+            'labels_idx': labels_idx,
+            'labels_names': labels_names,
+            'dataframe': self.annotations # for potential dual class indexing
         }
     
     def get_prototypes(self,model,n = None):
@@ -142,9 +173,9 @@ class SupervisedDataset(Dataset):
   
 class SupervisedTestDataset(SupervisedDataset):
     
-    def __init__(self, data_dir, annotations = None, target_length = 2.7, target_sample_rate = 22050, n_augmentations= 1, transform = True, augmentations = None, train = True, n_classes = 50) -> None:
+    def __init__(self, data_dir, annotations = None, target_length = 2.7, target_sample_rate = 22050, n_augmentations= 1, transform = True, augmentations = None, train = True, n_classes = 50, idx2class = None) -> None:
         
-        super().__init__(data_dir, annotations, target_length, target_sample_rate, n_augmentations, transform, augmentations, train, n_classes)
+        super().__init__(data_dir, annotations, target_length, target_sample_rate, n_augmentations, transform, augmentations, train, n_classes, idx2class = idx2class)
         
         
     def __getitem__(self, index):
@@ -153,6 +184,8 @@ class SupervisedTestDataset(SupervisedDataset):
         
         
         audio = load_audio_and_split_in_chunks(path, self.target_samples, self.target_sample_rate)
+        if audio is None:
+            return self[index + 1]
         labeled = torch.tensor(1)
         labels = self.get_labels(index)
         

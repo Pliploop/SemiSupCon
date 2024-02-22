@@ -71,7 +71,13 @@ def load_audio_and_split_in_chunks(path, target_samples, target_sample_rate):
     
     #ssplit audio into chunks of target_samples
     chunks = torch.split(encodec_audio, target_samples, dim=1)
-    audio = torch.cat(chunks[:-1]) ## drop the last one to avoid padding
+    if len(chunks) > 1:
+        audio = torch.cat(chunks[:-1]) ## drop the last one to avoid padding
+    else:
+        
+        audio = chunks[0]
+        if audio.size(1) < target_samples:
+            return None
 
     return audio
 

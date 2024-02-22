@@ -38,7 +38,7 @@ class SelfSupervisedDataset(Dataset):
         if audio is None:
             return self[index + 1]
         
-        audio = self.split_and_augment(audio)
+        audio, clean_audio = self.split_and_augment(audio)
         
         labeled = torch.tensor(0)
         labels = torch.zeros(self.n_classes)
@@ -49,6 +49,7 @@ class SelfSupervisedDataset(Dataset):
         
         return {
             "audio": audio,
+            "clean_audio": clean_audio,
             "labels": labels,
             "labeled": labeled
         }
@@ -70,12 +71,14 @@ class SelfSupervisedDataset(Dataset):
                 else:
                     waveform = torch.cat([waveform, waveform])
             
-            
         
         if self.augmentations is not None and self.transform and self.train:
-            waveform = self.augmentations(waveform)
+            aug_waveform = self.augmentations(waveform)
+        else:
+            aug_waveform = waveform
             
-        return waveform
+            
+        return aug_waveform, waveform
             
         
 

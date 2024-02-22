@@ -25,12 +25,12 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
                 previous_experiment_name = 'from_scratch'
             else:
                 previous_experiment_name = config['model']['checkpoint'].split('/')[-2]
-            if not config['test'] and config['resume_id'] is None:
+            if not config['test']:
                 new_experiment_name = experiment_name+f'_finetune_{previous_experiment_name}_{config["model"]["task"]}'
             else:
                 new_experiment_name = experiment_name
                 
-            if not os.path.exists(os.path.join(self.config['ckpt_path'], new_experiment_name)):
+            if not os.path.exists(os.path.join(self.config['ckpt_path'], new_experiment_name)) and not config['test']:
                 os.makedirs(os.path.join(self.config['ckpt_path'], new_experiment_name))
                 
             with open(os.path.join(os.path.join(self.config['ckpt_path'], new_experiment_name), "config.yaml"), 'w') as outfile:
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     cli.trainer.logger = logger
 
     try:
-        if not os.path.exists(os.path.join(ckpt_path, experiment_name)):
+        if not os.path.exists(os.path.join(ckpt_path, experiment_name)) and not cli.config.test:
             os.makedirs(os.path.join(ckpt_path, experiment_name))
     except:
         pass

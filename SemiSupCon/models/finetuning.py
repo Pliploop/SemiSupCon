@@ -23,36 +23,29 @@ class FinetuneSemiSupCon(pl.LightningModule):
         super().__init__()
         
         self.task = task
-        if self.task == 'mtat_top50':
-            self.loss_fn = nn.BCEWithLogitsLoss()
-            self.n_classes = 50
-        if self.task == 'mtat_all':
-            self.n_classes = 188
-            self.loss_fn = nn.BCEWithLogitsLoss()
-        if self.task == 'giantsteps':
-            self.loss_fn = nn.CrossEntropyLoss()
-            self.n_classes = 24
-        if self.task == 'nsynth_pitch':
-            self.loss_fn = nn.CrossEntropyLoss()
-            self.n_classes = 112
-        if self.task == 'nsynth_instr_family':
-            self.n_classes = 11
-            self.loss_fn = nn.CrossEntropyLoss()
-        if self.task == 'gtzan':
-            self.n_classes = 10
-            self.loss_fn = nn.CrossEntropyLoss()
-        if self.task == 'mtg_top50':
-            self.n_classes = 50
-            self.loss_fn = nn.BCEWithLogitsLoss()
-        if self.task == 'mtg_genre':
-            self.n_classes = 87
-            self.loss_fn = nn.BCEWithLogitsLoss()
-        if self.task == 'mtg_mood':
-            self.n_classes = 56
-            self.loss_fn = nn.BCEWithLogitsLoss()
-        if self.task == 'mtg_instr':
-            self.n_classes = 40
-            self.loss_fn = nn.BCEWithLogitsLoss()
+        
+        task_dict = {
+            'mtat_top50': {'n_classes': 50, 'loss_fn': nn.BCEWithLogitsLoss()},
+            'mtat_all': {'n_classes': 188, 'loss_fn': nn.BCEWithLogitsLoss()},
+            'giantsteps': {'n_classes': 24, 'loss_fn': nn.CrossEntropyLoss()},
+            'nsynth_pitch': {'n_classes': 112, 'loss_fn': nn.CrossEntropyLoss()},
+            'nsynth_instr_family': {'n_classes': 11, 'loss_fn': nn.CrossEntropyLoss()},
+            'gtzan': {'n_classes': 10, 'loss_fn': nn.CrossEntropyLoss()},
+            'mtg_top50': {'n_classes': 50, 'loss_fn': nn.BCEWithLogitsLoss()},
+            'mtg_genre': {'n_classes': 87, 'loss_fn': nn.BCEWithLogitsLoss()},
+            'mtg_mood': {'n_classes': 56, 'loss_fn': nn.BCEWithLogitsLoss()},
+            'mtg_instr': {'n_classes': 40, 'loss_fn': nn.BCEWithLogitsLoss()},
+            'emomusic': {'n_classes': 2, 'loss_fn': nn.MSELoss()},
+            'vocalset_technique': {'n_classes': 17, 'loss_fn': nn.CrossEntropyLoss()},
+            'vocalset_singer': {'n_classes': 20, 'loss_fn': nn.CrossEntropyLoss()},
+            'medleydb': {'n_classes': 8, 'loss_fn': nn.CrossEntropyLoss()}
+        }
+
+        if self.task in task_dict:
+            self.n_classes = task_dict[self.task]['n_classes']
+            self.loss_fn = task_dict[self.task]['loss_fn']
+        else:
+            raise ValueError(f"Invalid task: {self.task}")
             
         self.semisupcon = SemiSupCon(encoder)
         self.optimizer = optimizer
@@ -86,7 +79,8 @@ class FinetuneSemiSupCon(pl.LightningModule):
             
         
         if self.checkpoint_head:
-            self.head.load_state_dict(torch.load(self.checkpoint_head)['state_dict'], strict = False)
+            self.load_state_dict(torch.load(self.checkpoint_head)['state_dict'], strict = False)
+            print('Loaded head weights from checkpoint')
             
             
         
@@ -129,8 +123,12 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
         
         # x is of shape [B,T]:
-        
-        encoded = self.semisupcon(wav)['encoded']
+        if self.freeze_encoder:
+            with torch.no_grad():
+                encoded = self.semisupcon(wav)['encoded']
+        else:
+            encoded = self.semisupcon(wav)['encoded']
+            
         projected = self.head(encoded)
         
         return {
@@ -139,6 +137,25 @@ class FinetuneSemiSupCon(pl.LightningModule):
             'encoded':encoded
         }
         
+    def test_forward(self,x):
+        
+        if isinstance(x,dict):
+            wav = x['audio']
+            labels = x['labels'].squeeze(1)
+        else:
+            wav = x
+            labels = torch.zeros(wav.shape[0]*wav.shape[1],10)
+            
+        # x is of shape [B,T]:
+        
+        encoded = self.semisupcon(wav)['encoded']
+        projected = self.head(encoded.mean(0)).unsqueeze(0)
+        
+        return {
+            'projected':projected,
+            'labels':labels,
+            'encoded':encoded
+        }
         
     def training_step(self, batch, batch_idx):
             
@@ -193,7 +210,10 @@ class FinetuneSemiSupCon(pl.LightningModule):
             x['audio'] = x['audio'][:64]
         x['labels'] = x['labels'].squeeze(0)
         
-        out_ = self(x)
+        if self.task != 'emomusic':
+            out_ = self(x)
+        else:
+            out_ = self.test_forward(x)
         
         
         logits = out_['projected']
@@ -201,6 +221,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
         logits = logits.mean(0).unsqueeze(0)
         labels = labels[0].unsqueeze(0)
+        
         
         self.agg_ground_truth.append(labels.detach().cpu())
         self.agg_preds.append(logits.detach().cpu())
@@ -213,7 +234,6 @@ class FinetuneSemiSupCon(pl.LightningModule):
         preds = torch.cat(self.agg_preds,0)
         ground_truth = torch.cat(self.agg_ground_truth,0)
         
-        preds = torch.sigmoid(preds)
         
         loss = self.loss_fn(preds,ground_truth.float())
         
@@ -225,7 +245,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
         self.log_metrics(test_metrics,stage = 'test')
         
         # make a pretty matplotlib heatmap of the confusion matrix
-        if self.task in ['mtat_top50','giantsteps']:
+        if self.task in ['mtat_top50','giantsteps','medleydb']:
             cmat = confusion_matrix(preds,ground_truth,self.n_classes).cpu().numpy()
         # normalize the cmatrix row-wise
             cmat = cmat.astype('float') / cmat.sum(axis=1)[:, np.newaxis]

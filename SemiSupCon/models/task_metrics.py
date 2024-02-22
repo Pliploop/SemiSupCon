@@ -1,5 +1,5 @@
 
-from torchmetrics.functional import auroc, average_precision, accuracy, recall, precision
+from torchmetrics.functional import auroc, average_precision, accuracy, recall, precision, r2_score
 from mir_eval.key import weighted_score
 import torch
 
@@ -29,6 +29,7 @@ def mtg_instr_metrics(logits, labels, idx2class, class_names, n_classes):
 def mtg_mood_metrics(logits, labels, idx2class, class_names, n_classes):
     return multilabel_metrics(logits, labels, idx2class, class_names, n_classes)
     
+    
 def giantsteps_metrics(logits, labels, idx2class, class_names, n_classes):
     preds = torch.softmax(logits,dim = 1)
     preds = torch.argmax(preds,dim = 1)
@@ -47,32 +48,36 @@ def giantsteps_metrics(logits, labels, idx2class, class_names, n_classes):
 
 
 def nsynth_pitch_metrics(logits, labels, idx2class, class_names, n_classes):
-    softlogits = torch.softmax(logits,dim = 1)
-    preds = torch.argmax(softlogits,dim = 1)
-    batch_size = preds.size(0)
-    preds_names = [idx2class[pred] for pred in preds.cpu().numpy()]
-    labels_idx = torch.argmax(labels,dim = 1)
-    labels_names = [idx2class[label] for label in labels_idx.cpu().numpy()]
-    accuracy_ = accuracy(softlogits,labels_idx, task = 'multiclass', num_classes = n_classes)
-    recall_ = recall(preds,labels_idx,task = 'multiclass',num_classes = n_classes)
-    precision__ = precision(preds,labels_idx,task = 'multiclass',num_classes = n_classes)
-    
-    return {'accuracy':accuracy_,'recall':recall_,'precision':precision__}
+    return get_multiclass_metrics(logits, labels, idx2class, class_names, n_classes, 'nsynth_pitch')
 
 def nsynth_instr_family_metrics(logits, labels, idx2class, class_names, n_classes):
-    softlogits = torch.softmax(logits,dim = 1)
-    preds = torch.argmax(softlogits,dim = 1)
-    batch_size = preds.size(0)
-    preds_names = [idx2class[pred] for pred in preds.cpu().numpy()]
-    labels_idx = torch.argmax(labels,dim = 1)
-    labels_names = [idx2class[label] for label in labels_idx.cpu().numpy()]
-    accuracy_ = accuracy(softlogits,labels_idx, task = 'multiclass', num_classes = n_classes)
-    recall_ = recall(preds,labels_idx,task = 'multiclass',num_classes = n_classes)
-    precision__ = precision(preds,labels_idx,task = 'multiclass',num_classes = n_classes)
-    
-    return {'accuracy':accuracy_,'recall':recall_,'precision':precision__}
+    return get_multiclass_metrics(logits, labels, idx2class, class_names, n_classes, 'nsynth_instr_family')
 
 def gtzan_metrics(logits, labels, idx2class, class_names, n_classes):
+    return get_multiclass_metrics(logits, labels, idx2class, class_names, n_classes, 'gtzan')
+
+def vocalset_technique_metrics(logits, labels, idx2class, class_names, n_classes):
+    return get_multiclass_metrics(logits, labels, idx2class, class_names, n_classes, 'vocalset_technique')
+
+def vocalset_singer_metrics(logits, labels, idx2class, class_names, n_classes):
+    return get_multiclass_metrics(logits, labels, idx2class, class_names, n_classes, 'vocalset_language')
+
+def medleydb_metrics(logits, labels, idx2class, class_names, n_classes):
+    return get_multiclass_metrics(logits, labels, idx2class, class_names, n_classes, 'medleydb')
+
+def emomusic_metrics(logits, labels,idx2class, class_names, n_classes):
+    
+    global_r2 = r2_score(preds = logits, target = labels, multioutput = 'uniform_average')
+    v_r2 = r2_score(preds = logits[:,1], target = labels[:,1])
+    a_r2 = r2_score(preds = logits[:,0], target = labels[:,0])
+    
+    return {
+        'r2_score':global_r2,
+        'valence_r2_score':v_r2,
+        'arousal_r2_score':a_r2
+    }
+    
+def get_multiclass_metrics(logits, labels, idx2class, class_names, n_classes, dataset):
     preds = torch.softmax(logits,dim = 1)
     preds = torch.argmax(preds,dim = 1)
     batch_size = preds.size(0)
@@ -80,5 +85,7 @@ def gtzan_metrics(logits, labels, idx2class, class_names, n_classes):
     labels_idx = torch.argmax(labels,dim = 1)
     labels_names = [idx2class[label] for label in labels_idx.cpu().numpy()]
     accuracy_ = accuracy(preds,labels_idx, task = 'multiclass', num_classes = n_classes)
+    precision_ = precision(preds,labels_idx, task = 'multiclass', num_classes = n_classes)
+    recall_ = recall(preds,labels_idx, task = 'multiclass', num_classes = n_classes)
     
-    return {'accuracy':accuracy_}
+    return {'accuracy':accuracy_,'precision':precision_,'recall':recall_}

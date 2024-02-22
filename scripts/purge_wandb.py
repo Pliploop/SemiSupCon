@@ -22,10 +22,6 @@ def delete_folders(checkpoint_folders = ['Checkpoints'], wandb_projects = ['Semi
                     
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python purge_wandb.py [wandb_projects] [checkpoint_folders]")
-        sys.exit(1)
-
    
 
     delete_folders()

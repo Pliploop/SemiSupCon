@@ -1,3 +1,4 @@
 from .pretraining_datasets.sl_dataset import SupervisedDataset, SupervisedTestDataset
 from .pretraining_datasets.ssl_dataset import SelfSupervisedDataset
 from .mixed_dataloader import MixedDataLoader
+from .datamodule_splitter import DataModuleSplitter
