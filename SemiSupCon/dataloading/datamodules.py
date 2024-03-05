@@ -31,6 +31,7 @@ class MixedDataModule(pl.LightningDataModule):
                  fully_supervised = False,
                  intrabatch_supervised_p = 0.5,
                  severity_modifier = 2, # scales from 0 to 5
+                 test_transform = False,
                  aug_list = []) -> None:
         
         super().__init__()
@@ -55,6 +56,7 @@ class MixedDataModule(pl.LightningDataModule):
         self.use_test_set = use_test_set
         self.fully_supervised = fully_supervised
         self.aug_list = aug_list
+        self.test_transform = test_transform
         
         #build a dict with augmentation name and the corresponding function with parameters as specified below
         self.severity_modifier = severity_modifier/2
@@ -77,6 +79,7 @@ class MixedDataModule(pl.LightningDataModule):
             self.class_names = None
         
         print(self.annotations.groupby('split').count())
+        print("task: ", self.task)
         print("n_classes: ", self.n_classes)
         
     def get_aug_chain(self):
@@ -84,18 +87,36 @@ class MixedDataModule(pl.LightningDataModule):
         if self.severity_modifier > 0:
         
             self.augmentations = {
-                'gain': Gain(min_gain_in_db=-15.0 * self.severity_modifier, max_gain_in_db=5.0 * self.severity_modifier, p=min(1,0.4* self.severity_modifier), sample_rate=self.target_sample_rate),
-                'polarity_inversion': PolarityInversion(p=min(1,0.6* self.severity_modifier), sample_rate=self.target_sample_rate),
-                'add_colored_noise': AddColoredNoise(p=min(1,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_snr_in_db=3 / self.severity_modifier, max_snr_in_db=30 / self.severity_modifier, min_f_decay=-2 * self.severity_modifier, max_f_decay=2 * self.severity_modifier),
+                'gain': Gain(min_gain_in_db=-15.0 * self.severity_modifier, max_gain_in_db=5.0 * self.severity_modifier, p=min(0.7,0.4* self.severity_modifier), sample_rate=self.target_sample_rate),
+                'polarity_inversion': PolarityInversion(p=min(0.8,0.6* self.severity_modifier), sample_rate=self.target_sample_rate),
+                'add_colored_noise': AddColoredNoise(p=min(0.8,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_snr_in_db=3 / self.severity_modifier, max_snr_in_db=30 / self.severity_modifier, min_f_decay=-2 * self.severity_modifier, max_f_decay=2 * self.severity_modifier),
                 'filtering': OneOf([
-                    BandPassFilter(p=min(1,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_center_frequency=200, max_center_frequency=4000 * self.severity_modifier, min_bandwidth_fraction=0.5 * self.severity_modifier, max_bandwidth_fraction=1.99 ),
-                    BandStopFilter(p=min(1,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_center_frequency=200 , max_center_frequency=4000 * self.severity_modifier, min_bandwidth_fraction=0.5 * self.severity_modifier, max_bandwidth_fraction=1.99 ),
-                    HighPassFilter(p=min(1,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_cutoff_freq=200 * self.severity_modifier, max_cutoff_freq=2400 * self.severity_modifier),
-                    LowPassFilter(p=min(1,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_cutoff_freq=150 * self.severity_modifier, max_cutoff_freq=7500 * self.severity_modifier),
+                    BandPassFilter(p=min(0.6,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_center_frequency=200, max_center_frequency=4000, min_bandwidth_fraction=0.5 * self.severity_modifier, max_bandwidth_fraction=1.99 ),
+                    BandStopFilter(p=min(0.6,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_center_frequency=200 , max_center_frequency=4000 , min_bandwidth_fraction=0.5 * self.severity_modifier, max_bandwidth_fraction=1.99 ),
+                    HighPassFilter(p=min(0.6,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_cutoff_freq=200 * self.severity_modifier , max_cutoff_freq=min(0.5* self.target_sample_rate,2400 * self.severity_modifier)),
+                    LowPassFilter(p=min(0.6,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_cutoff_freq=max(75,150 / self.severity_modifier), max_cutoff_freq=7500 / max(1,self.severity_modifier) ),
                 ]),
-                'pitch_shift': PitchShift(p=min(1,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_transpose_semitones=-4 * self.severity_modifier, max_transpose_semitones=4 * self.severity_modifier),
-                'delay': Delay(p=min(1,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_delay_ms=100 / self.severity_modifier, max_delay_ms=500, volume_factor=0.5 * self.severity_modifier, repeats=2 * self.severity_modifier, attenuation=min(1,0.5 * self.severity_modifier)),
+                'pitch_shift': PitchShift(p=min(0.75,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_transpose_semitones=-4 * self.severity_modifier, max_transpose_semitones=4 * self.severity_modifier),
+                'delay': Delay(p=min(0.6,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_delay_ms=100 / self.severity_modifier, max_delay_ms=500, volume_factor=0.5 * self.severity_modifier, repeats=2 * self.severity_modifier, attenuation=min(1,0.5 * self.severity_modifier)),
+                'timestretch': TimeStretch(p=0.5, sample_rate=self.target_sample_rate, min_stretch_rate=0.7, max_stretch_rate=1.3),
+                'splice': SpliceOut(p=0.5, sample_rate=self.target_sample_rate),
+                'reverb' : None,
+                'chorus' : None,
+                'distortion' : None,
+                'compression' : None,
+                'reverse' : None,
+                'bitcrush' : None,
+                'mp3' : None
             }
+            ## for tiers 5 and + :
+                # 5: add time stretch (Implemented)
+                # 6 splicing from torch audiomentations (From AudioMentations)
+                # 7 : add reverb, chorus
+                # 8 : and distortion from spotify pedalboard
+                # 9 : add compression and reversing
+                # 10 : add bitcrushing and mp3 compression
+                
+                # all at 0.3 probability, default parameters : mostly to see out of distribution performance
             
             # build an augmentation pipeline with the above augmentations if they are in self.aug_list
             self.supervised_augmentations = Compose(
@@ -121,7 +142,7 @@ class MixedDataModule(pl.LightningDataModule):
         
         train_supervised_dataset = SupervisedDataset(self.data_dir, supervised_train_annotations, self.target_length, self.target_sample_rate, self.n_augmentations, self.transform, self.supervised_augmentations,  True, self.n_classes, idx2class=self.idx2class)
         val_supervised_dataset = SupervisedDataset(self.data_dir, supervised_val_annotations, self.target_length, self.target_sample_rate, self.n_augmentations, self.transform, self.supervised_augmentations,  True, self.n_classes, idx2class=self.idx2class)
-        test_supervised_dataset = SupervisedTestDataset(self.data_dir, supervised_test_annotations, self.target_length, self.target_sample_rate, 1, False, None,  False, self.n_classes, idx2class = self.idx2class)
+        test_supervised_dataset = SupervisedTestDataset(self.data_dir, supervised_test_annotations, self.target_length, self.target_sample_rate, 1, self.test_transform, self.supervised_augmentations,  False, self.n_classes, idx2class = self.idx2class)
         train_self_supervised_dataset = SelfSupervisedDataset(self.data_dir, self_supervised_train_annotations, self.target_length, self.target_sample_rate, self.n_augmentations, self.transform, self.self_supervised_augmentations, True, self.n_classes)
         val_self_supervised_dataset = SelfSupervisedDataset(self.data_dir, self_supervised_val_annotations, self.target_length, self.target_sample_rate, self.n_augmentations, self.transform, self.self_supervised_augmentations, True, self.n_classes)
         

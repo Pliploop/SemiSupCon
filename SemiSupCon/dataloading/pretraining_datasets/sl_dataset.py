@@ -63,7 +63,7 @@ class SupervisedDataset(Dataset):
         waveform = torch.cat(torch.split(
             audio, self.target_samples, dim=1)).unsqueeze(1)
         
-        if self.augmentations is not None and self.transform and self.train:
+        if self.augmentations is not None and self.transform:
             waveform = self.augmentations(waveform)
             
         return waveform
@@ -189,6 +189,11 @@ class SupervisedTestDataset(SupervisedDataset):
         labeled = torch.tensor(1)
         labels = self.get_labels(index)
         
+        if self.transform and self.augmentations is not None:
+            audio = audio.unsqueeze(1)
+            audio = self.augmentations(audio)
+            audio = audio.squeeze(1)
+        
         #add n_augmentation dimension as the first dimension
         labels = labels.unsqueeze(0).repeat(self.n_augmentations,1)
         labeled = labeled.unsqueeze(0).repeat(self.n_augmentations)
@@ -200,16 +205,6 @@ class SupervisedTestDataset(SupervisedDataset):
             "labels": labels,
             "labeled": labeled
         }
-    
-    def split_and_augment(self,audio):
-        
-        waveform = torch.cat(torch.split(
-            audio, self.target_samples, dim=1)).unsqueeze(1)
-        
-        if self.augmentations is not None and self.transform and self.train:
-            waveform = self.augmentations(waveform)
-            
-        return waveform      
 
 class DummySupervisedDataset(Dataset):
     def __init__(self, size=100):

@@ -45,7 +45,7 @@ def plot_tsne(representations, labels = None, title = None, cmap = 'tab20', perp
             representations, labels = transform_for_multilabel(representations, labels, title)
     tsne = TSNE(n_components=n_components, verbose=1, perplexity=perplexity, n_iter=n_iter, metric=metric)
     tsne_results = tsne.fit_transform(representations)
-    fig = plt.figure(figsize=(10,10))
+    fig,ax = plt.subplots(figsize=(10,10))
     # sns.scatterplot(x=for_viz['representations'][:,0], y=for_viz['representations'][:,1], hue=for_viz_pitch_classes, sizes = for_viz_octave, palette="deep")
     if n_components == 3:
         # interactive 3D plot with plotly
@@ -65,11 +65,19 @@ def plot_tsne(representations, labels = None, title = None, cmap = 'tab20', perp
         plotly.offline.iplot(trace)
 
     else:
-        scatter = sns.scatterplot(x=tsne_results[:,0], y=tsne_results[:,1], *args, **kwargs)
-        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))  
-    # labels_names contains the names of the classes
-    # add the legend with the label names
+        scatter = sns.scatterplot(x=tsne_results[:,0], y=tsne_results[:,1], ax = ax, *args, **kwargs)
+        # plt.legend(loc='upper left', ncol=2)  
+        # legend should be outside the plot to the left
+        plt.legend(loc='upper left', bbox_to_anchor=(1, 1), ncol=2)
+        ax.axis('off')
+        # no xticks and yticks and no x and y axis labels
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel('')
+        ax.set_ylabel('')
         plt.title(title)
+        
+        return fig,ax
     
     
 #how would you deal with multilabel in this case? i.e one representation that has multiple labels

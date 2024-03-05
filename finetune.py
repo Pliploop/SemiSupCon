@@ -28,9 +28,9 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
             if not config['test']:
                 new_experiment_name = experiment_name+f'_finetune_{previous_experiment_name}_{config["model"]["task"]}'
             else:
-                new_experiment_name = experiment_name
+                new_experiment_name = experiment_name + f'_test_{previous_experiment_name}_{config["model"]["task"]}'
                 
-            if not os.path.exists(os.path.join(self.config['ckpt_path'], new_experiment_name)) and not config['test']:
+            if not os.path.exists(os.path.join(self.config['ckpt_path'], new_experiment_name)) and  (not config['test'] or config['resume_id'] is None):
                 os.makedirs(os.path.join(self.config['ckpt_path'], new_experiment_name))
                 
             with open(os.path.join(os.path.join(self.config['ckpt_path'], new_experiment_name), "config.yaml"), 'w') as outfile:
@@ -66,15 +66,22 @@ if __name__ == "__main__":
     cli.instantiate_classes()
     
     # get the name of the model loaded from checkpoint
-    if cli.config.model.checkpoint is not None and cli.config.test==False:
-        previous_experiment_name = cli.config.model.checkpoint.split('/')[-2]
+    if cli.config.model.checkpoint is not None or cli.config.model.checkpoint_head is not None:
+        if cli.config.model.checkpoint is not None:
+            previous_experiment_name = cli.config.model.checkpoint.split('/')[-2]
+        if cli.config.model.checkpoint_head is not None:
+            previous_experiment_name = cli.config.model.checkpoint_head.split('/')[-2]
     else:
-        previous_experiment_name = ''
+        if cli.config.test == False:
+            previous_experiment_name = 'from_scratch'
+        
 
     if cli.config.log:
         logger = WandbLogger(project="SemiSupCon-finetuning2",id = cli.config.resume_id)
         experiment_name = logger.experiment.name+f"_finetune_{previous_experiment_name}_{cli.config['model']['task']}"
         ckpt_path = cli.config.ckpt_path
+        if cli.config.test:
+            experiment_name = experiment_name.replace('finetune', 'test')
     else:
         logger = None
 

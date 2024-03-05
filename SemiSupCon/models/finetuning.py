@@ -38,7 +38,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
             'emomusic': {'n_classes': 2, 'loss_fn': nn.MSELoss()},
             'vocalset_technique': {'n_classes': 17, 'loss_fn': nn.CrossEntropyLoss()},
             'vocalset_singer': {'n_classes': 20, 'loss_fn': nn.CrossEntropyLoss()},
-            'medleydb': {'n_classes': 8, 'loss_fn': nn.CrossEntropyLoss()}
+            'medleydb': {'n_classes': 20, 'loss_fn': nn.CrossEntropyLoss()}
         }
 
         if self.task in task_dict:
@@ -57,11 +57,6 @@ class FinetuneSemiSupCon(pl.LightningModule):
         if self.checkpoint:
             self.load_encoder_weights_from_checkpoint(self.checkpoint)
             
-        if self.freeze_encoder:
-            self.semisupcon.freeze()
-            self.semisupcon.eval()
-            print('Encoder is frozen')
-            
             
         self.agg_preds = []
         self.agg_ground_truth = []
@@ -77,11 +72,17 @@ class FinetuneSemiSupCon(pl.LightningModule):
         else:
             self.head = nn.Linear(512, self.n_classes, bias=False)
             
+        device = next(self.semisupcon.parameters()).device
         
         if self.checkpoint_head:
-            self.load_state_dict(torch.load(self.checkpoint_head)['state_dict'], strict = False)
-            print('Loaded head weights from checkpoint')
+            self.load_state_dict(torch.load(self.checkpoint_head, map_location=device)['state_dict'], strict = False)
+            print(f'Loaded head weights from checkpoint {self.checkpoint_head}')
             
+        
+        if self.freeze_encoder:
+            self.semisupcon.freeze()
+            self.semisupcon.eval()
+            print('Encoder is frozen')
             
         
             
@@ -110,7 +111,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
     def load_head_weights_from_checkpoint(self,checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
-        self.head.load_state_dict(checkpoint['state_dict'], strict = False)
+        self.load_state_dict(checkpoint['state_dict'], strict = False)
         
     def forward(self,x):
         
@@ -210,10 +211,7 @@ class FinetuneSemiSupCon(pl.LightningModule):
             x['audio'] = x['audio'][:64]
         x['labels'] = x['labels'].squeeze(0)
         
-        if self.task != 'emomusic':
-            out_ = self(x)
-        else:
-            out_ = self.test_forward(x)
+        out_  = self.test_forward(x)
         
         
         logits = out_['projected']
@@ -275,11 +273,12 @@ class FinetuneSemiSupCon(pl.LightningModule):
                     
             ax.set_title("Confusion matrix")
             fig.tight_layout()
-            self.logger.log_image(
-                'confusion_matrix', [wandb.Image(fig)])
+            if self.logger:
+                self.logger.log_image(
+                    'confusion_matrix', [wandb.Image(fig)])
             
             
-            wandb.log({"Confusion Matrix":self.custom_wandb_confusion_matrix(cmat)})
+                wandb.log({"Confusion Matrix":self.custom_wandb_confusion_matrix(cmat)})
         
         self.agg_preds = []
         self.agg_ground_truth = []
@@ -315,6 +314,4 @@ class FinetuneSemiSupCon(pl.LightningModule):
             
         return optimizer
     
-    def on_checkpoint_save(self, checkpoint):
-        checkpoint['state_dict'] = self.head.state_dict()
         

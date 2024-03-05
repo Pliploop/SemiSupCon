@@ -170,8 +170,16 @@ class SemiSupCon(pl.LightningModule):
         # new_contrastive_matrix = torch.zeros(B*(N_ssl+N_sl),B*(N_ssl+N_sl),device = labels.device)
          # new_contrastive_matrix[:B*N_ssl,:B*N_ssl] = ssl_contrastive_matrix
         # new_contrastive_matrix[B*N_ssl:,B*N_ssl:] = sl_contrastive_matrix
-        
-        new_contrastive_matrix = ((ssl_contrastive_matrix + sl_contrastive_matrix) > 0).int()
+        if self.pos_thresh != "weighted":
+            new_contrastive_matrix = ((ssl_contrastive_matrix + sl_contrastive_matrix) > 0).int()
+        else:
+            
+            new_contrastive_matrix = ssl_contrastive_matrix + sl_contrastive_matrix
+            # sigmoid to get a value between 0 and 1
+            new_contrastive_matrix = new_contrastive_matrix.float()
+            #if over 1 rectify to 1
+            new_contrastive_matrix = torch.min(new_contrastive_matrix,torch.ones_like(new_contrastive_matrix))
+            
         
         return new_contrastive_matrix,ssl_contrastive_matrix, sl_contrastive_matrix
         
@@ -202,24 +210,21 @@ class SemiSupCon(pl.LightningModule):
         
         # if the label is -1 then there is no corresponding class in the batch
         
-        
-        ## the simplest solution with multilabel is to consider that if any of the labels are the same, then the
-        ## examples are similar.
-        ## the other solution is to consider that if all the labels are the same, then the examples are similar.
-        ## the latter is more strict and will probably lead to better results, but the former is more robust to
-        ## label noise.
-        ## the last solution is to weight the similarity by the number of labels that are the same.
-        
-        
         x = (labels[i_indices] == labels[j_indices])*(labels[i_indices]==1)
-        contrastive_matrix = x.any(dim=-1).int()
+        # contrastive_matrix = x.any(dim=-1).int()
         
-        # contrastive_matrix = (x.sum(-1) >= self.pos_thresh).int()
-        
+        if self.pos_thresh != "weighted":
+            contrastive_matrix = (x.sum(-1) >= self.pos_thresh).int()
+        else:
         # weighing strategy : sum of classes in common over number of classes for i and j
-        # num_classes_i = labels[i_indices].sum(-1)
-        # num_classes_j = labels[j_indices].sum(-1)
-        # contrastive_matrix = (2 * x.sum(-1) / (num_classes_i + num_classes_j)).float()
+            num_classes_i = labels[i_indices].sum(-1)
+            num_classes_j = labels[j_indices].sum(-1)
+            class_matrix = num_classes_i + num_classes_j
+            # if class_matrix is 0 then we set it to 1 to avoid division by 0
+            class_matrix[class_matrix == 0] = 1
+            
+            contrastive_matrix = (2 * x.sum(-1) / (class_matrix)).float()
+            
         
         return contrastive_matrix
     

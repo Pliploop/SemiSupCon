@@ -17,6 +17,7 @@ from sklearn.model_selection import train_test_split
 from SemiSupCon.dataloading import *
 from SemiSupCon.dataloading.custom_augmentations import *
 
+
 def compute_checksum(path_or_bytes, algorithm="sha256", gunzip=False, chunk_size=4096):
     """Computes checksum of target path.
 
@@ -61,7 +62,6 @@ def compute_checksum(path_or_bytes, algorithm="sha256", gunzip=False, chunk_size
     return computed.hexdigest()
 
 
-
 def parse_minsec(s):
     s = s.split(".")
     t = float(s[0]) * 60
@@ -77,25 +77,25 @@ class DataModuleSplitter:
     """generates annotation files for the MixedDataModule. Takes a task as argument
     and returns a pandas dataframe with three columns : file_path, split, labels.
     labels are one-hot encoded vectors of size n_classes or None if the dataset is unsupervised
-    
+
     if supervised_data_p is 1, then all available supervised data is used. If it is 0, then no supervised data is used.
     if fully_supervised is True, then only supervised data is used (e.g supervised contrastive learning or finetuning).
     if use_test_set is false, then the test set is used as part of the training set.
     """
-    
+
     def __init__(self,
                  data_dir,
                  task=None,
-                 ssl_task= None,
-                 sl_task= None,
-                 supervised_data_p = 1,
+                 ssl_task=None,
+                 sl_task=None,
+                 supervised_data_p=1,
                  val_split=0.1,
-                 test_split = 0.1,
-                 use_test_set = False,
-                 fully_supervised = False,
-                 extension = 'wav'
+                 test_split=0.1,
+                 use_test_set=False,
+                 fully_supervised=False,
+                 extension='wav'
                  ):
-        
+
         self.task = task
         self.ssl_task = ssl_task
         self.sl_task = sl_task
@@ -105,122 +105,113 @@ class DataModuleSplitter:
         self.val_split = val_split
         self.test_split = test_split
         self.use_test_set = use_test_set
-        if self.use_test_set==False:
+        if self.use_test_set == False:
             self.test_split = 0
-            
-        
+
         self.n_classes = 0
-            
+
         if self.ssl_task == self.sl_task:
             if self.ssl_task is None:
                 fetch_function = self.get_default_annotations
             else:
                 fetch_function = eval(f"self.get_{self.ssl_task}_annotations")
             annotations, idx2class = fetch_function()
-            self.annotations = self.filter_supervised_annotations(annotations, self.supervised_data_p)
+            self.annotations = self.filter_supervised_annotations(
+                annotations, self.supervised_data_p)
             self.annotations['task'] = self.ssl_task
-            
-            
+
         else:
             if self.ssl_task is None:
                 ssl_fetch_function = self.get_default_annotations
             else:
-                ssl_fetch_function = eval(f"self.get_{self.ssl_task}_annotations")
+                ssl_fetch_function = eval(
+                    f"self.get_{self.ssl_task}_annotations")
             if self.sl_task is None:
                 sl_fetch_function = self.get_default_annotations
             else:
-                sl_fetch_function = eval(f"self.get_{self.sl_task}_annotations")
-                
+                sl_fetch_function = eval(
+                    f"self.get_{self.sl_task}_annotations")
+
             ssl_annotations, _ = ssl_fetch_function()
             sl_annotations, idx2class = sl_fetch_function()
-            
-            # raise ValueError('not implemented')
-            
-            
-            ssl_annotations.loc[:,'labels'] = None
-            sl_annotations = self.filter_supervised_annotations(sl_annotations, self.supervised_data_p, drop = True)
+
+            ssl_annotations.loc[:, 'labels'] = None
+            sl_annotations = self.filter_supervised_annotations(
+                sl_annotations, self.supervised_data_p, drop=True)
             ssl_annotations['task'] = self.ssl_task
             sl_annotations['task'] = self.sl_task
-            
+
             self.annotations = pd.concat([ssl_annotations, sl_annotations])
-       
+
         self.idx2class = idx2class
-            
-            
-        
-        
-        # self.annotations = self.get_annotations()
-        
-        if self.use_test_set==False:
+
+        if self.use_test_set == False:
             # change the split column to train where it is 'test'
-            self.annotations.loc[self.annotations['split'] == 'test', 'split'] = 'train'
-            
-        
-        
-        # build new column for annotations dataframe that indicates whether the data is supervised or not
+            self.annotations.loc[self.annotations['split']
+                                 == 'test', 'split'] = 'train'
+
         self.annotations['supervised'] = 1
-        self.annotations.loc[self.annotations['labels'].isna(), 'supervised'] = 0
-        
+        self.annotations.loc[self.annotations['labels'].isna(),
+                             'supervised'] = 0
+
         if self.fully_supervised:
             self.annotations = self.annotations[self.annotations['supervised'] == 1]
-            
-        # #replace the last 3 characters of every file path with extension
-        # self.annotations['file_path'] = self.annotations['file_path'].str[:-3] + extension
-            
+
     def get_annotations(self):
         return self.fetch_function()
-    
+
     def get_fma_annotations(self):
-        path = 'data/fma/fma_medium.csv' # just because for some weird reason it takes forever to read the files
+        # just because for some weird reason it takes forever to read the files using get default annotations
+        path = 'data/fma/fma_medium_wav.csv'
         annotations = pd.read_csv(path)
-        annotations.loc[:,'split'] = 'train'
-        annotations.loc[:,'labels'] = None
-        
+        annotations.loc[:, 'split'] = 'train'
+        annotations.loc[:, 'labels'] = None
+
         annotations = annotations[['file_path']]
-        
+
         if self.val_split > 0:
             train_len = int(len(annotations) * (1 - self.val_split))
-            train_annotations, val_annotations = random_split(annotations, [train_len, len(annotations) - train_len])
-            # turn train_annotations and val_annotations back into dataframes
+            train_annotations, val_annotations = random_split(
+                annotations, [train_len, len(annotations) - train_len])
             train_annotations = annotations.iloc[train_annotations.indices]
             val_annotations = annotations.iloc[val_annotations.indices]
-            train_annotations.loc[:,'split'] = 'train'
-            val_annotations.loc[:,'split'] = 'val'
+            train_annotations.loc[:, 'split'] = 'train'
+            val_annotations.loc[:, 'split'] = 'val'
             annotations = pd.concat([train_annotations, val_annotations])
-            
-        return annotations,None
-    
-    def filter_supervised_annotations(self, annotations, supervised_data_p, drop = False):
+
+        return annotations, None
+
+    def filter_supervised_annotations(self, annotations, supervised_data_p, drop=False):
         supervised_annotations = annotations[annotations.labels.notna()]
         unsupervised_annotations = annotations[annotations.labels.isna()]
-        
+
         n_supervised = int(len(supervised_annotations) * supervised_data_p)
-        shuffle =  np.random.permutation(len(supervised_annotations))
+        shuffle = np.random.permutation(len(supervised_annotations))
         unsupervised_indices = shuffle[n_supervised:]
         temp_labels = supervised_annotations['labels']
         temp_labels.iloc[unsupervised_indices] = None
-        annotations.loc[:,'labels'] = temp_labels
-        annotations = pd.concat([supervised_annotations, unsupervised_annotations])
-        
+        annotations.loc[:, 'labels'] = temp_labels
+        annotations = pd.concat(
+            [supervised_annotations, unsupervised_annotations])
+
         # annotations = annotations[['file_path', 'labels','split']]
-        
-        if drop :
+
+        if drop:
             annotations = annotations[annotations['labels'].notna()]
-        
+
         return annotations
-        
-    
+
     def get_mtat_top50_annotations(self):
         csv_path = '/import/c4dm-datasets/MagnaTagATune/annotations_final.csv'
         annotations = pd.read_csv(csv_path, sep='\t')
         labels = annotations.drop(columns=['mp3_path', 'clip_id'])
 
-        top_50_labels = labels.sum(axis=0).sort_values(ascending=False).head(50).index
+        top_50_labels = labels.sum(axis=0).sort_values(
+            ascending=False).head(50).index
         labels = labels[top_50_labels]
-        
-        
-        ## rename the columns to match the default annotations
-        annotations = annotations.rename(columns={'mp3_path':'file_path'})
+
+        # rename the columns to match the default annotations
+        annotations = annotations.rename(columns={'mp3_path': 'file_path'})
 
         label_sums = labels.sum(axis=1)
         unsupervised_annotations = annotations[label_sums == 0]
@@ -230,111 +221,120 @@ class DataModuleSplitter:
         annotations['labels'] = labels.values.tolist()
         annotations = annotations[['file_path', 'labels']]
         unsupervised_annotations['labels'] = None
-        unsupervised_annotations = unsupervised_annotations[['file_path', 'labels']]
+        unsupervised_annotations = unsupervised_annotations[[
+            'file_path', 'labels']]
         unsupervised_annotations['split'] = 'train'
 
         val_folders = ['c/']
-        test_folders = ['d/','e/', 'f/']
+        test_folders = ['d/', 'e/', 'f/']
 
         annotations['split'] = 'train'
-        annotations.loc[annotations['file_path'].str[:2].isin(val_folders), 'split'] = 'val'
-        annotations.loc[annotations['file_path'].str[:2].isin(test_folders), 'split'] = 'test'
-
+        annotations.loc[annotations['file_path'].str[:2].isin(
+            val_folders), 'split'] = 'val'
+        annotations.loc[annotations['file_path'].str[:2].isin(
+            test_folders), 'split'] = 'test'
 
         annotations = pd.concat([annotations, unsupervised_annotations])
-        
+
         class2idx = {c: i for i, c in enumerate(labels.columns)}
         idx2class = {i: c for i, c in enumerate(labels.columns)}
-        
-        #replace .mp3 with .wav
+
+        # replace .mp3 with .wav
         annotations['file_path'] = annotations['file_path'].str[:-3] + 'wav'
-        self.n_classes= 50
+        self.n_classes = 50
 
         return annotations, idx2class
-    
+
     def get_mtat_all_annotations(self):
-        
+
         csv_path = '/import/c4dm-datasets/MagnaTagATune/annotations_final.csv'
         annotations = pd.read_csv(csv_path, sep='\t')
         labels = annotations.drop(columns=['mp3_path', 'clip_id'])
-        
+
         annotations['labels'] = labels.values.tolist()
         val_folders = ['c/']
-        test_folders = ['d/','e/', 'f/']
-        
+        test_folders = ['d/', 'e/', 'f/']
+
         annotations['split'] = 'train'
-        annotations.loc[annotations['mp3_path'].str[:2].isin(val_folders), 'split'] = 'val'
-        annotations.loc[annotations['mp3_path'].str[:2].isin(test_folders), 'split'] = 'test'
-        annotations = annotations.rename(columns={'mp3_path':'file_path'})
+        annotations.loc[annotations['mp3_path'].str[:2].isin(
+            val_folders), 'split'] = 'val'
+        annotations.loc[annotations['mp3_path'].str[:2].isin(
+            test_folders), 'split'] = 'test'
+        annotations = annotations.rename(columns={'mp3_path': 'file_path'})
         self.n_classes = len(labels.columns)
-        
+
         class2idx = {c: i for i, c in enumerate(labels.columns)}
         idx2class = {i: c for i, c in enumerate(labels.columns)}
-        
-        
+
         annotations['file_path'] = annotations['file_path'].str[:-3] + 'wav'
-        
+
         return annotations, idx2class
-        
-        
+
     def get_default_annotations(self):
         # read through data_dir, fetch any audio files, and random split train and val according to self.val_split
         # labels are None, or nan in the pandas dataframe
-        
+
         file_list = []
         for root, _, files in os.walk(self.data_dir):
             for file in files:
                 if file.endswith(".wav") or file.endswith(".mp3"):
                     # add the file path to file_list but exclude the data_dir
-                    file_list.append(os.path.join(root, file)[len(self.data_dir) + 1:])
-                    
-        annotations = pd.DataFrame(file_list, columns = ['file_path'])
-        annotations.loc[:,'split'] = 'train'
-        annotations.loc[:,'labels'] = None
-        
-        
-        
+                    file_list.append(os.path.join(root, file)[
+                                     len(self.data_dir) + 1:])
+
+        annotations = pd.DataFrame(file_list, columns=['file_path'])
+        annotations.loc[:, 'split'] = 'train'
+        annotations.loc[:, 'labels'] = None
+
         if self.val_split > 0:
             train_len = int(len(annotations) * (1 - self.val_split))
-            train_annotations, val_annotations = random_split(annotations, [train_len, len(annotations) - train_len])
+            train_annotations, val_annotations = random_split(
+                annotations, [train_len, len(annotations) - train_len])
             # turn train_annotations and val_annotations back into dataframes
             train_annotations = annotations.iloc[train_annotations.indices]
             val_annotations = annotations.iloc[val_annotations.indices]
-            train_annotations.loc[:,'split'] = 'train'
-            val_annotations.loc[:,'split'] = 'val'
+            train_annotations.loc[:, 'split'] = 'train'
+            val_annotations.loc[:, 'split'] = 'val'
             annotations = pd.concat([train_annotations, val_annotations])
-            
+
         return annotations, None
-        
+
     def get_gtzan_annotations(self):
         audio_path = "/import/c4dm-datasets/gtzan_torchaudio/genres"
         # annotations = pd.read_csv("data/gtzan_annotations.csv")
-        #read txt files into dataframes
-        
-        train_annotations = pd.read_csv("data/gtzan/train_filtered.txt", sep = ' ', header = None)
-        val_annotations = pd.read_csv("data/gtzan/val_filtered.txt", sep = ' ', header = None)
-        test_annotations = pd.read_csv("data/gtzan/test_filtered.txt", sep = ' ', header = None)
-        
+        # read txt files into dataframes
+
+        train_annotations = pd.read_csv(
+            "data/gtzan/train_filtered.txt", sep=' ', header=None)
+        val_annotations = pd.read_csv(
+            "data/gtzan/val_filtered.txt", sep=' ', header=None)
+        test_annotations = pd.read_csv(
+            "data/gtzan/test_filtered.txt", sep=' ', header=None)
+
         train_annotations['split'] = 'train'
         val_annotations['split'] = 'val'
         test_annotations['split'] = 'test'
-        
-        annotations = pd.concat([train_annotations,val_annotations,test_annotations])
-        annotations.columns = ['file_path','split']
-        
-        annotations['genre'] = annotations['file_path'].apply(lambda x:x.split('/')[0])
+
+        annotations = pd.concat(
+            [train_annotations, val_annotations, test_annotations])
+        annotations.columns = ['file_path', 'split']
+
+        annotations['genre'] = annotations['file_path'].apply(
+            lambda x: x.split('/')[0])
 
         self.n_classes = len(annotations['genre'].unique())
-        
+
         annotations['file_path'] = audio_path + '/' + annotations['file_path']
-        
+
         class2idx = {c: i for i, c in enumerate(annotations['genre'].unique())}
         idx2class = {i: c for i, c in enumerate(annotations['genre'].unique())}
-        annotations['labels'] = annotations['genre'].apply(lambda x: class2idx[x])
-        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
-        
+        annotations['labels'] = annotations['genre'].apply(
+            lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(
+            annotations['labels']).values.astype(int).tolist()
+
         return annotations, idx2class
-    
+
     def get_giantsteps_annotations(self):
         test_audio_path = "/homes/jpmg86/giantsteps-key-dataset/audio"
         test_annotations_path = "/homes/jpmg86/giantsteps-key-dataset/annotations/key"
@@ -342,11 +342,14 @@ class DataModuleSplitter:
         # every file in the annotations path is of shape {filename}.LOFI.key
         # and when read contains the key as a string.
         # build the annotations file with the audio files in audio_path and the keys in the annotations_path
-        test_annotations = pd.DataFrame(os.listdir(test_audio_path), columns=['file_path'])
+        test_annotations = pd.DataFrame(os.listdir(
+            test_audio_path), columns=['file_path'])
         test_annotations['split'] = 'test'
         test_annotations['labels'] = None
-        test_annotations['annotation_file'] = test_annotations_path + '/' + test_annotations['file_path'].str[:-4] + '.key'
-        test_annotations['file_path'] = test_audio_path + '/' + test_annotations['file_path']
+        test_annotations['annotation_file'] = test_annotations_path + \
+            '/' + test_annotations['file_path'].str[:-4] + '.key'
+        test_annotations['file_path'] = test_audio_path + \
+            '/' + test_annotations['file_path']
 
         for idx, row in test_annotations.iterrows():
             with open(row['annotation_file'], 'r') as f:
@@ -370,10 +373,12 @@ class DataModuleSplitter:
         # train_annotations = pd.DataFrame(os.listdir(train_audio_path), columns = ['file_path'])
         train_annotations['split'] = 'train'
         train_annotations['labels'] = None
-        train_annotations['file_path'] = train_audio_path + '/' + train_annotations['file_path'].astype(str) + '.LOFI.mp3'
+        train_annotations['file_path'] = train_audio_path + '/' + \
+            train_annotations['file_path'].astype(str) + '.LOFI.mp3'
 
         # train_annotations['key'] = train_annotations['key'].apply(lambda x: x.split('/')[0].strip())
-        train_annotations = train_annotations[~train_annotations['key'].str.contains('/')]
+        train_annotations = train_annotations[~train_annotations['key'].str.contains(
+            '/')]
         train_annotations = train_annotations[train_annotations['key'].notna()]
         train_annotations = train_annotations[train_annotations['key'] != '-']
 
@@ -385,36 +390,29 @@ class DataModuleSplitter:
             "A#": "Bb",
         }
 
-
         # train_annotations = train_annotations[train_annotations['key'].isin(test_classes)]
         train_annotations['split'] = np.random.choice(["train", "val"], size=len(train_annotations),
                                                       p=[1 - self.val_split, self.val_split])
 
-       
-        
-
         annotations = pd.concat([train_annotations, test_annotations])
 
         annotations['key'] = annotations['key'].replace(enharmonic, regex=True)
-        annotations['key'] = annotations['key'].apply(lambda x:x.strip())
-
+        annotations['key'] = annotations['key'].apply(lambda x: x.strip())
 
         class2idx = {c: i for i, c in enumerate(annotations['key'].unique())}
         idx2class = {i: c for i, c in enumerate(annotations['key'].unique())}
 
-        annotations['labels'] = annotations['key'].apply(lambda x: class2idx[x])
-        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
+        annotations['labels'] = annotations['key'].apply(
+            lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(
+            annotations['labels']).values.astype(int).tolist()
 
         self.n_classes = len(annotations['key'].unique())
 
         return annotations, idx2class
-        
-        
-    
+
     def get_emomusic_annotations(self):
         d = "/import/c4dm-datasets/emoMusic45s"
-
-        
 
         # prase annotations CSV
         audio_uids = set()
@@ -437,8 +435,10 @@ class DataModuleSplitter:
                         # NOTE: Only one clip per song in this dataset
                         assert audio_uid not in audio_uids
                         audio_uids.add(audio_uid)
-                        clip_start = parse_minsec(row["start of the segment (min.sec)"])
-                        clip_end = parse_minsec(row["end of the segment (min.sec)"])
+                        clip_start = parse_minsec(
+                            row["start of the segment (min.sec)"])
+                        clip_end = parse_minsec(
+                            row["end of the segment (min.sec)"])
                         clip_dur = clip_end - clip_start
                         assert clip_dur == 45.0
                         uid_to_metadata[uid] = {
@@ -498,7 +498,8 @@ class DataModuleSplitter:
                 )
                 artist = " ".join(artist.split())
                 artist_id = int(
-                    compute_checksum(artist.encode("utf-8"), algorithm="sha1"), 16
+                    compute_checksum(artist.encode("utf-8"),
+                                     algorithm="sha1"), 16
                 )
                 split = ratios[artist_id % len(ratios)]
                 metadata["split"] = split
@@ -510,40 +511,39 @@ class DataModuleSplitter:
             split = metadata["split"]
             mp3_path = pathlib.Path(d, "clips_45seconds", f"{int(uid)}.mp3")
             labels = metadata["y"]
-            
+
             result = {
                 "file_path": mp3_path,
                 "split": split,
                 "labels": labels,
             }
-            
-            
+
             results.append(result)
         df = pd.DataFrame(results)
         self.n_classes = 2
-        # replace valid with val 
-        df['split'] = df['split'].replace('valid','val')
-        
+        # replace valid with val
+        df['split'] = df['split'].replace('valid', 'val')
+
         return df, None
-    
+
     def get_nsynth_instr_family_annotations(self):
         return self.get_nsynth_annotations('instrument_family')
-    
+
     def get_nsynth_instr_annotations(self):
         return self.get_nsynth_annotations('instrument')
-    
+
     def get_nsynth_pitch_annotations(self):
-        annotations,idx2class =  self.get_nsynth_annotations('pitch')
+        annotations, idx2class = self.get_nsynth_annotations('pitch')
         idx2class = {i: librosa.midi_to_note(c) for i, c in idx2class.items()}
-        return annotations,idx2class
-    
+        return annotations, idx2class
+
     def get_nsynth_qualities_annotations(self):
         annotations = self.get_nsynth_annotations('instrument_family')
         annotations['labels'] = annotations["qualities"]
         self.n_classes = len(annotations['labels'][0])
         return annotations
-    
-    def get_nsynth_annotations(self,class_name):
+
+    def get_nsynth_annotations(self, class_name):
         all_data = {}
         path_dir = '/import/c4dm-datasets/nsynth/nsynth'
         for split in 'train', 'valid', 'test':
@@ -553,90 +553,92 @@ class DataModuleSplitter:
                 # add split, data is of shape {sample_key : dict}. We want dict[split] = split
                 for key in data.keys():
                     data[key]['split'] = split
-                    
+
                 all_data.update(data)
-                
+
         annotations = pd.DataFrame(list(all_data.values()))
-        annotations['file_path'] = path_dir +'-' + annotations['split'] + '/audio/' + annotations['note_str'] + '.wav'
+        annotations['file_path'] = path_dir + '-' + annotations['split'] + \
+            '/audio/' + annotations['note_str'] + '.wav'
         # replace 'split' with 'train', 'val', 'test'
-        annotations['split'] = annotations['split'].apply(lambda x: 'train' if x == 'train' else 'val' if x == 'valid' else 'test')
-    
-    
+        annotations['split'] = annotations['split'].apply(
+            lambda x: 'train' if x == 'train' else 'val' if x == 'valid' else 'test')
+
         # get the number of classes for column "instrument_family"
         self.n_classes = len(annotations[class_name].unique())
         # pretty print the number of classes
         # add 'labels' to the dataframe as a one-hot of classes to int
-        
-        class2idx = {c: i for i, c in enumerate(annotations[class_name].unique())}
-        idx2class = {i: c for i, c in enumerate(annotations[class_name].unique())}
-        annotations['labels'] = annotations[class_name].apply(lambda x: class2idx[x])
-        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
-        
-        return annotations, idx2class
-        
-            
-    def get_vocalset_singer_annotations(self):
-        
-        
-        
-        data_dir = '/import/c4dm-datasets/VocalSet1-2'
 
+        class2idx = {c: i for i, c in enumerate(
+            annotations[class_name].unique())}
+        idx2class = {i: c for i, c in enumerate(
+            annotations[class_name].unique())}
+        annotations['labels'] = annotations[class_name].apply(
+            lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(
+            annotations['labels']).values.astype(int).tolist()
+
+        return annotations, idx2class
+
+    def get_vocalset_singer_annotations(self):
+
+        data_dir = '/import/c4dm-datasets/VocalSet1-2'
 
         # annotations = pd.DataFrame(columns=['file_path', 'labels', 'split'])
         annotations = []
-
-        
 
         for root, dirs, files in os.walk(os.path.join(data_dir, 'data_by_singer')):
             for file in files:
                 if file.endswith(".wav"):
                     # the singer_id is the first folder after root in dirs
                     singer_id = file.split('_')[0]
-                    file_path = os.path.join(root,os.path.join(root, file))
+                    file_path = os.path.join(root, os.path.join(root, file))
                     annotation = {
                         'singer_id': singer_id,
                         'file_path': file_path,
                     }
-                    
+
                     annotations.append(annotation)
-                                
-                    
-        
-        annotations = pd.DataFrame(annotations, columns=['singer_id','file_path'])
-        annotations['split'] = np.random.choice(["train", "val","test"], size=len(annotations), p=[1 - 2*self.val_split, self.val_split, self.val_split])
-                               
+
+        annotations = pd.DataFrame(annotations, columns=[
+                                   'singer_id', 'file_path'])
+        annotations['split'] = np.random.choice(["train", "val", "test"], size=len(
+            annotations), p=[1 - 2*self.val_split, self.val_split, self.val_split])
+
         annotations['label_name'] = annotations["singer_id"]
-        
-        
-        class2idx = {c: i for i, c in enumerate(annotations['label_name'].unique())}
-        idx2class = {i: c for i, c in enumerate(annotations['label_name'].unique())}
-        annotations['labels'] = annotations['label_name'].apply(lambda x: class2idx[x])
-        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
+
+        class2idx = {c: i for i, c in enumerate(
+            annotations['label_name'].unique())}
+        idx2class = {i: c for i, c in enumerate(
+            annotations['label_name'].unique())}
+        annotations['labels'] = annotations['label_name'].apply(
+            lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(
+            annotations['labels']).values.astype(int).tolist()
         # split the train data into train and val #but ignore test
-        
+
         self.n_classes = len(annotations['label_name'].unique())
-        
+
         return annotations, idx2class
-    
+
     def get_vocalset_technique_annotations(self):
         data_dir = '/import/c4dm-datasets/VocalSet1-2'
-        train_singers = pd.read_csv(os.path.join(data_dir, 'train_singers_technique.txt'), header=None)
-        test_singers = pd.read_csv(os.path.join(data_dir, 'test_singers_technique.txt'), header=None)
+        train_singers = pd.read_csv(os.path.join(
+            data_dir, 'train_singers_technique.txt'), header=None)
+        test_singers = pd.read_csv(os.path.join(
+            data_dir, 'test_singers_technique.txt'), header=None)
         train_singers.columns = ['id']
         test_singers.columns = ['id']
-
 
         train_singers['split'] = 'train'
         test_singers['split'] = 'test'
 
         id_to_split = pd.concat([train_singers, test_singers])
 
-        id_to_split['id'] = id_to_split['id'].apply(lambda x: x.replace('emale', '').replace('ale', ''  ))
-
+        id_to_split['id'] = id_to_split['id'].apply(
+            lambda x: x.replace('emale', '').replace('ale', ''))
 
         # annotations = pd.DataFrame(columns=['file_path', 'labels', 'split'])
         annotations = []
-        
 
         for root, dirs, files in os.walk(os.path.join(data_dir, 'data_by_technique')):
             for file in files:
@@ -645,157 +647,187 @@ class DataModuleSplitter:
                     technique = root.split('/')[-1]
                     if singer_id in id_to_split.id.unique():
                         file_path = os.path.join(root, file)
-                
-                        split = id_to_split[id_to_split['id'] == singer_id]['split'].values[0]
-                        
-                        annotations.append([singer_id,file_path, technique, split])
-                    
-        
-        annotations = pd.DataFrame(annotations, columns=['singer_id','file_path', 'technique', 'split'])
-                      
+
+                        split = id_to_split[id_to_split['id']
+                                            == singer_id]['split'].values[0]
+
+                        annotations.append(
+                            [singer_id, file_path, technique, split])
+
+        annotations = pd.DataFrame(annotations, columns=[
+                                   'singer_id', 'file_path', 'technique', 'split'])
+
         annotations['label_name'] = annotations["technique"]
-        
-        
-        class2idx = {c: i for i, c in enumerate(annotations['label_name'].unique())}
-        idx2class = {i: c for i, c in enumerate(annotations['label_name'].unique())}
-        annotations['labels'] = annotations['label_name'].apply(lambda x: class2idx[x])
-        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
+
+        class2idx = {c: i for i, c in enumerate(
+            annotations['label_name'].unique())}
+        idx2class = {i: c for i, c in enumerate(
+            annotations['label_name'].unique())}
+        annotations['labels'] = annotations['label_name'].apply(
+            lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(
+            annotations['labels']).values.astype(int).tolist()
         # split the train data into train and val #but ignore test
-        
+
         if self.val_split > 0:
             test_data = annotations[annotations['split'] == 'test']
             train_data = annotations[annotations['split'] == 'train']
-            val_data = annotations[annotations['split'] == 'train'].sample(frac=self.val_split)
+            val_data = annotations[annotations['split']
+                                   == 'train'].sample(frac=self.val_split)
             train_data = train_data.drop(val_data.index)
             val_data['split'] = 'val'
             annotations = pd.concat([train_data, val_data, test_data])
-        
+
         self.n_classes = len(annotations['label_name'].unique())
-        
+
         return annotations, idx2class
-    
-    def get_mtg_annotations(self,path,audio_path):
-        
+
+    def get_mtg_annotations(self, path, audio_path):
+
         annotations = []
-        
+
         class2idx = {}
         for split in ['train', 'validation', 'test']:
-            data = open(path.replace("split.tsv",f"{split}.tsv"), "r").readlines()
+            data = open(path.replace(
+                "split.tsv", f"{split}.tsv"), "r").readlines()
             all_paths = [line.split('\t')[3] for line in data[1:]]
             all_tags = [line[:-1].split('\t')[5:] for line in data[1:]]
-            annotations.append(pd.DataFrame({"file_path":all_paths, "tags":all_tags, "split":split}))            
+            annotations.append(pd.DataFrame(
+                {"file_path": all_paths, "tags": all_tags, "split": split}))
             for example in data[1:]:
                 tags = example.split('\t')[5:]
                 for tag in tags:
                     tag = tag.strip()
                     if tag not in class2idx:
                         class2idx[tag] = len(class2idx)
-                       
+
         idx2class = {i: c for i, c in enumerate(class2idx.keys())}
-        annotations = pd.concat(annotations) 
-        
-        #replace mp3 extensions with wav in path columns
-        annotations["split"] = annotations["split"].str.replace("validation", "val")
-        
+        annotations = pd.concat(annotations)
+
+        # replace mp3 extensions with wav in path columns
+        annotations["split"] = annotations["split"].str.replace(
+            "validation", "val")
+
         self.n_classes = len(class2idx)
 
-        
         # the "labels" column is a list of tags, we need to one-hot encode it
-        annotations['idx'] = annotations['tags'].apply(lambda x: [class2idx[tag] for tag in x])
+        annotations['idx'] = annotations['tags'].apply(
+            lambda x: [class2idx[tag] for tag in x])
         # now "labels" is a list of indices, we need to one-hot encode it into one on-hot vector per example
-        annotations['labels'] = annotations['idx'].apply(lambda x: np.sum(np.eye(len(class2idx))[x], axis=0).astype(int).tolist())
+        annotations['labels'] = annotations['idx'].apply(lambda x: np.sum(
+            np.eye(len(class2idx))[x], axis=0).astype(int).tolist())
         annotations['file_path'] = audio_path + '/' + annotations['file_path']
-        
-        return annotations,idx2class
-    
+
+        return annotations, idx2class
+
     def get_mtg_top50_annotations(self):
-        
+
         path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_top50tags-split.tsv"
         audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
-        
-        return self.get_mtg_annotations(path,audio_path)
-        
-        
-        
-    
+
+        return self.get_mtg_annotations(path, audio_path)
+
     def get_mtg_instr_annotations(self):
-        
+
         path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_instrument-split.tsv"
         audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
-        
-        return self.get_mtg_annotations(path,audio_path)
-        
-    
+
+        return self.get_mtg_annotations(path, audio_path)
+
     def get_mtg_genre_annotations(self):
-        
+
         path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_genre-split.tsv"
         audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
-        
-        return self.get_mtg_annotations(path,audio_path)
-        
+
+        return self.get_mtg_annotations(path, audio_path)
+
     def get_mtg_mood_annotations(self):
-        
+
         path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_moodtheme-split.tsv"
         audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
-        
-        return self.get_mtg_annotations(path,audio_path)
-    
+
+        return self.get_mtg_annotations(path, audio_path)
+
     def get_medleydb_annotations(self):
-        annotations,_ = self.get_medleydb_both_annotations()
-        
-        train, test = train_test_split(annotations, test_size=self.val_split, stratify=annotations['stem_instrument'])
-        train, val = train_test_split(train, test_size=self.val_split, stratify=train['stem_instrument'])
+        annotations, _ = self.get_medleydb_both_annotations()
+
+        train, test = train_test_split(
+            annotations, test_size=self.val_split, stratify=annotations['stem_instrument'])
+        train, val = train_test_split(
+            train, test_size=self.val_split, stratify=train['stem_instrument'])
 
         train['split'] = 'train'
         val['split'] = 'val'
         test['split'] = 'test'
 
         annotations = pd.concat([train, val, test])
-        
+
         annotations['label_name'] = annotations["stem_instrument"]
-        
-        idx2class = {i: c for i, c in enumerate(annotations['stem_instrument'].unique())}
-        class2idx = {c: i for i, c in enumerate(annotations['stem_instrument'].unique())}
-        
-        annotations['labels'] = annotations['label_name'].apply(lambda x: class2idx[x])
-        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
-        
+
+        idx2class = {i: c for i, c in enumerate(
+            annotations['stem_instrument'].unique())}
+        class2idx = {c: i for i, c in enumerate(
+            annotations['stem_instrument'].unique())}
+
+        annotations['labels'] = annotations['label_name'].apply(
+            lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(
+            annotations['labels']).values.astype(int).tolist()
+
         self.n_classes = len(annotations['label_name'].unique())
-        
+
         return annotations, idx2class
-    
+
     def get_medleydb_raw_annotations(self):
-        
-        _,annotations = self.get_medleydb_both_annotations()
-        
-        train, test = train_test_split(annotations, test_size=self.val_split, stratify=annotations['raw_instrument'])
-        train, val = train_test_split(train, test_size=self.val_split, stratify=train['raw_instrument'])
+
+        _, annotations = self.get_medleydb_both_annotations()
+
+        train, test = train_test_split(
+            annotations, test_size=self.val_split, stratify=annotations['raw_instrument'])
+        train, val = train_test_split(
+            train, test_size=self.val_split, stratify=train['raw_instrument'])
 
         train['split'] = 'train'
         val['split'] = 'val'
         test['split'] = 'test'
 
         annotations = pd.concat([train, val, test])
-        
+
         annotations['label_name'] = annotations["raw_instrument"]
-        
-        
-        idx2class = {i: c for i, c in enumerate(annotations['raw_instrument'].unique())}
-        class2idx = {c: i for i, c in enumerate(annotations['raw_instrument'].unique())}
-        
-        annotations['labels'] = annotations['label_name'].apply(lambda x: class2idx[x])
-        annotations['labels'] = pd.get_dummies(annotations['labels']).values.astype(int).tolist()
-        
+
+        idx2class = {i: c for i, c in enumerate(
+            annotations['raw_instrument'].unique())}
+        class2idx = {c: i for i, c in enumerate(
+            annotations['raw_instrument'].unique())}
+
+        annotations['labels'] = annotations['label_name'].apply(
+            lambda x: class2idx[x])
+        annotations['labels'] = pd.get_dummies(
+            annotations['labels']).values.astype(int).tolist()
+
         self.n_classes = len(annotations['label_name'].unique())
-        
+
         return annotations, idx2class
-        
-        
-    
+
     def get_medleydb_both_annotations(self):
-        
+
         medleydb_path = "data/medleydb"
-        medleydb_audio_path = '/import/c4dm-datasets/MedleyDB_V2/V2'
+        medleydb_audio_path = '/import/c4dm-datasets/MedleyDB_V1/V1'
+        medleydb_audio_path_v2 = '/import/c4dm-datasets/MedleyDB_V2/V2'
+
+        # get all the folder names in both audio paths with root
+        all_paths_1 = []
+        all_folders_1 = []
+        all_paths_2 = []
+        all_folders_2 = []
+        for root, dirs, files in os.walk(medleydb_audio_path):
+            for dir_ in dirs:
+                all_folders_1.append(os.path.join(root, dir_))
+                all_paths_1.append(dir_)
+        for root, dirs, files in os.walk(medleydb_audio_path_v2):
+            for dir_ in dirs:
+                all_folders_2.append(os.path.join(root, dir_))
+                all_paths_2.append(dir_)
 
         rows = []
 
@@ -803,63 +835,64 @@ class DataModuleSplitter:
             song_path = os.path.join(medleydb_path, song)
             yaml_dict = yaml.load(open(song_path), Loader=yaml.FullLoader)
             for stem in yaml_dict['stems']:
-                stem_path = os.path.join(medleydb_audio_path,
-                                         yaml_dict['stem_dir'].split('_STEMS')[0],
-                                         yaml_dict['stem_dir'],
-                                         yaml_dict['stems'][stem]['filename'])
                 stem_instrument = yaml_dict['stems'][stem]['instrument']
-                row = {'song_name': song.split('_METADATA.yaml')[0], 'stem_name': stem, 'stem_path': stem_path, 'stem_instrument': stem_instrument}
+                row = {'song_name': song.split('_METADATA.yaml')[
+                    0], 'filename': yaml_dict['stems'][stem]['filename'], 'filedir': yaml_dict['stem_dir'], 'stem_instrument': stem_instrument}
+
                 rows.append(row)
 
         df = pd.DataFrame(rows)
 
         raw_rows = []
 
-
         for song in os.listdir(medleydb_path):
             song_path = os.path.join(medleydb_path, song)
             yaml_dict = yaml.load(open(song_path), Loader=yaml.FullLoader)
             for stem in yaml_dict['stems']:
-                stem_path = os.path.join(medleydb_audio_path,
-                                         yaml_dict['stem_dir'].split('_STEMS')[0],
-                                         yaml_dict['stem_dir'],
-                                         yaml_dict['stems'][stem]['filename'])
+
                 stem_instrument = yaml_dict['stems'][stem]['instrument']
                 stem_dict = yaml_dict['stems'][stem]
                 for raw in stem_dict['raw']:
                     raw_dict = stem_dict['raw'][raw]
-                    raw_path = os.path.join(medleydb_audio_path,
-                                            yaml_dict['raw_dir'].split('_RAW')[0],
-                                            yaml_dict['raw_dir'],
-                                            stem_dict['raw'][raw]['filename'])
                     raw_instrument = raw_dict['instrument']
-                    raw_row = {'song_name': song.split('_METADATA.yaml')[0], 'stem_name': stem, 'stem_path': stem_path, 'raw_path': raw_path, 'raw_instrument': raw_instrument}
+                    raw_row = {'song_name': song.split('_METADATA.yaml')[
+                        0], 'filename': stem_dict['raw'][raw]['filename'], 'filedir': yaml_dict['raw_dir'], 'raw_instrument': raw_instrument}
                     raw_rows.append(raw_row)
-                    
+
         raw_df = pd.DataFrame(raw_rows)
+
+        existing_paths = pd.Series(all_paths_1 + all_paths_2)
+        existing_folders = pd.Series(all_folders_1 + all_folders_2)
+
+        paths2folders = pd.DataFrame(
+            {'path': existing_paths, 'folder': existing_folders})
 
         # melt both dataframes : when the instruments are lists we can use the explode function to create a row for each instrument
 
         df = df.explode('stem_instrument')
         raw_df = raw_df.explode('raw_instrument')
-        
-        df['file_path'] = df['stem_path']
-        raw_df['file_path'] = raw_df['raw_path']
 
-        to_filter =['fx/processed_sound','Unlabeled','auxiliary percussion','Main System']
+        to_filter = ['fx/processed_sound', 'Unlabeled',
+                     'auxiliary percussion', 'Main System']
 
         df = df[~df['stem_instrument'].isin(to_filter)]
         raw_df = raw_df[~raw_df['raw_instrument'].isin(to_filter)]
 
         # keep top 20 instruments for df and top 40 for raw_df
 
-        df = df[df['stem_instrument'].isin(df['stem_instrument'].value_counts().head(20).index)]
-        raw_df = raw_df[raw_df['raw_instrument'].isin(raw_df['raw_instrument'].value_counts().head(40).index)]
+        df = df[df['stem_instrument'].isin(
+            df['stem_instrument'].value_counts().head(20).index)]
+        raw_df = raw_df[raw_df['raw_instrument'].isin(
+            raw_df['raw_instrument'].value_counts().head(40).index)]
 
-        # create an instrument-stratified train-val-test split
+        df = pd.merge(df, paths2folders, left_on='song_name',
+                      right_on='path', how='inner')
+        df['file_path'] = df['folder'] + '/' + \
+            df['filedir'] + '/' + df['filename']
+        raw_df = pd.merge(raw_df, paths2folders,
+                          left_on='song_name', right_on='path', how='inner')
 
+        raw_df['file_path'] = raw_df['folder'] + '/' + \
+            raw_df['filedir'] + '/' + raw_df['filename']
 
-
-        
-        
         return df, raw_df

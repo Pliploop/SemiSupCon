@@ -9,9 +9,9 @@ trainer:
   logger: null
   callbacks: null
   fast_dev_run: false
-  max_epochs: 200
+  max_epochs: -1
   min_epochs: null
-  max_steps: -1
+  max_steps: 200000
   min_steps: null
   max_time: null
   limit_train_batches: null
@@ -43,11 +43,11 @@ trainer:
 model:
   encoder: 
     class_path: SemiSupCon.models.encoders.samplecnn.SampleCNN
-  freeze_encoder: true
+  freeze_encoder: false
   mlp_head: false 
   checkpoint: null 
   checkpoint_head : null
-  task : medleydb
+  task : mtat_top50
   optimizer:
     class_path: torch.optim.Adam
     init_args:
@@ -55,8 +55,8 @@ model:
       weight_decay: 0.000001
 data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
-  ssl_task: null
-  sl_task: medleydb
+  ssl_task: mtat_top50
+  sl_task: mtat_top50
   target_length: 2.7
   target_sample_rate: 22050
   n_augmentations: 1
@@ -74,4 +74,4 @@ log_model: false
 ckpt_path: Checkpoints-finetuning
 resume_id: null
 resume_from_checkpoint: null
-early_stopping_patience: 10
+early_stopping_patience: 15
