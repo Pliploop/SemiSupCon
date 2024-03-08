@@ -87,26 +87,26 @@ class MixedDataModule(pl.LightningDataModule):
         if self.severity_modifier > 0:
         
             self.augmentations = {
-                'gain': Gain(min_gain_in_db=-15.0 * self.severity_modifier, max_gain_in_db=5.0 * self.severity_modifier, p=min(0.7,0.4* self.severity_modifier), sample_rate=self.target_sample_rate),
-                'polarity_inversion': PolarityInversion(p=min(0.8,0.6* self.severity_modifier), sample_rate=self.target_sample_rate),
-                'add_colored_noise': AddColoredNoise(p=min(0.8,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_snr_in_db=3 / self.severity_modifier, max_snr_in_db=30 / self.severity_modifier, min_f_decay=-2 * self.severity_modifier, max_f_decay=2 * self.severity_modifier),
-                'filtering': OneOf([
+                'gain': lambda: Gain(min_gain_in_db=-15.0 * self.severity_modifier, max_gain_in_db=5.0 * self.severity_modifier, p=min(0.7,0.4* self.severity_modifier), sample_rate=self.target_sample_rate),
+                'polarity_inversion': lambda: PolarityInversion(p=min(0.8,0.6* self.severity_modifier), sample_rate=self.target_sample_rate),
+                'add_colored_noise': lambda: AddColoredNoise(p=min(0.8,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_snr_in_db=3 / self.severity_modifier, max_snr_in_db=30 / self.severity_modifier, min_f_decay=-2 * self.severity_modifier, max_f_decay=2 * self.severity_modifier),
+                'filtering': lambda: OneOf([
                     BandPassFilter(p=min(0.6,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_center_frequency=200, max_center_frequency=4000, min_bandwidth_fraction=0.5 * self.severity_modifier, max_bandwidth_fraction=1.99 ),
                     BandStopFilter(p=min(0.6,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_center_frequency=200 , max_center_frequency=4000 , min_bandwidth_fraction=0.5 * self.severity_modifier, max_bandwidth_fraction=1.99 ),
                     HighPassFilter(p=min(0.6,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_cutoff_freq=200 * self.severity_modifier , max_cutoff_freq=min(0.5* self.target_sample_rate,2400 * self.severity_modifier)),
                     LowPassFilter(p=min(0.6,0.3* self.severity_modifier), sample_rate=self.target_sample_rate, min_cutoff_freq=max(75,150 / self.severity_modifier), max_cutoff_freq=7500 / max(1,self.severity_modifier) ),
                 ]),
-                'pitch_shift': PitchShift(p=min(0.75,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_transpose_semitones=-4 * self.severity_modifier, max_transpose_semitones=4 * self.severity_modifier),
-                'delay': Delay(p=min(0.6,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_delay_ms=100 / self.severity_modifier, max_delay_ms=500, volume_factor=0.5 * self.severity_modifier, repeats=2 * self.severity_modifier, attenuation=min(1,0.5 * self.severity_modifier)),
-                'timestretch': TimeStretch(p=0.5, sample_rate=self.target_sample_rate, min_stretch_rate=0.7, max_stretch_rate=1.3),
-                'splice': SpliceOut(p=0.5, sample_rate=self.target_sample_rate),
-                'reverb' : None,
-                'chorus' : None,
-                'distortion' : None,
-                'compression' : None,
-                'reverse' : None,
-                'bitcrush' : None,
-                'mp3' : None
+                'pitch_shift': lambda: PitchShift(p=min(0.75,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_transpose_semitones=-4 * self.severity_modifier, max_transpose_semitones=4 * self.severity_modifier),
+                'delay': lambda: Delay(p=min(0.6,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_delay_ms=100 / self.severity_modifier, max_delay_ms=500, volume_factor=0.5 * self.severity_modifier, repeats=2 * self.severity_modifier, attenuation=min(1,0.5 * self.severity_modifier)),
+                'timestretch': lambda: TimeStretchAudiomentation(p=0.5, sample_rate=self.target_sample_rate, min_stretch_rate=0.7, max_stretch_rate=1.3),
+                'splice': lambda: SpliceOut(p=0.5, sample_rate=self.target_sample_rate),
+                'reverb' : lambda: ReverbAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
+                'chorus' : lambda: ChorusAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
+                'distortion' : lambda: DistortionAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
+                'compression' : lambda: CompressorAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
+                'reverse' : lambda: Reverse(p=0.5, sample_rate=self.target_sample_rate),
+                'bitcrush' : lambda: BitcrushAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
+                'mp3' : lambda: MP3CompressorAudiomentation(p=0.5, sample_rate=self.target_sample_rate)
             }
             ## for tiers 5 and + :
                 # 5: add time stretch (Implemented)
@@ -121,7 +121,7 @@ class MixedDataModule(pl.LightningDataModule):
             # build an augmentation pipeline with the above augmentations if they are in self.aug_list
             self.supervised_augmentations = Compose(
                 [
-                    self.augmentations[aug] for aug in self.aug_list
+                    self.augmentations[aug]() for aug in self.aug_list
                 ],
                 p=min(1,0.8 * self.severity_modifier),
             )

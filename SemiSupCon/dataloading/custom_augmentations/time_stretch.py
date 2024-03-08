@@ -10,7 +10,7 @@ import torch
 
 
 
-class TimeStretch(BaseWaveformTransform):
+class TimeStretchAudiomentation(BaseWaveformTransform):
     
     supported_modes = {"per_batch", "per_example", "per_channel"}
 
@@ -30,11 +30,7 @@ class TimeStretch(BaseWaveformTransform):
         sample_rate: int = None,
         target_rate: int = None,
         output_type: Optional[str] = None,
-        volume_factor: float = 0.5,
-        repeats: int = 2,
-        attenuation: float = 0.5,
-        debug = False
-    ):
+        ):
         """
         :param sample_rate:
         :param min_delay_ms: Minimum delay in milliseconds (default 20.0)
@@ -61,10 +57,6 @@ class TimeStretch(BaseWaveformTransform):
         self._max_stretch_rate = max_stretch_rate
         self._min_stretch_rate = min_stretch_rate
         self._mode = mode
-        self._volume_factor = volume_factor
-        self._repeats = int(repeats)
-        self._attenuation = attenuation
-        self.debug = debug
 
     def randomize_parameters(
         self,
@@ -117,7 +109,7 @@ class TimeStretch(BaseWaveformTransform):
 
 
         elif self._mode == "per_batch":
-            samples = self.delay(
+            samples = self.stretch(
                 samples, 
                 self.transform_parameters["stretch_rates"][0],
                 sample_rate
@@ -135,7 +127,7 @@ class TimeStretch(BaseWaveformTransform):
        # time stretch the signal and truncate to the original length
        
         new_audio = torch.zeros_like(samples)
-        samples = librosa.effects.time_stretch(samples.cpu().numpy(), stretch_rate)
+        samples = librosa.effects.time_stretch(y = samples.cpu().numpy(), rate =  stretch_rate)
         if samples.shape[1] > new_audio.shape[-1]:
             new_audio[:,:samples.shape[1]] = torch.tensor(samples)
         else:
