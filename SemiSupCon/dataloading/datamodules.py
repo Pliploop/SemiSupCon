@@ -98,15 +98,15 @@ class MixedDataModule(pl.LightningDataModule):
                 ]),
                 'pitch_shift': lambda: PitchShift(p=min(0.75,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_transpose_semitones=-4 * self.severity_modifier, max_transpose_semitones=4 * self.severity_modifier),
                 'delay': lambda: Delay(p=min(0.6,0.6* self.severity_modifier), sample_rate=self.target_sample_rate, min_delay_ms=100 / self.severity_modifier, max_delay_ms=500, volume_factor=0.5 * self.severity_modifier, repeats=2 * self.severity_modifier, attenuation=min(1,0.5 * self.severity_modifier)),
-                'timestretch': lambda: TimeStretchAudiomentation(p=0.5, sample_rate=self.target_sample_rate, min_stretch_rate=0.7, max_stretch_rate=1.3),
-                'splice': lambda: SpliceOut(p=0.5, sample_rate=self.target_sample_rate),
-                'reverb' : lambda: ReverbAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
-                'chorus' : lambda: ChorusAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
-                'distortion' : lambda: DistortionAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
-                'compression' : lambda: CompressorAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
-                'reverse' : lambda: Reverse(p=0.5, sample_rate=self.target_sample_rate),
-                'bitcrush' : lambda: BitcrushAudiomentation(p=0.5, sample_rate=self.target_sample_rate),
-                'mp3' : lambda: MP3CompressorAudiomentation(p=0.5, sample_rate=self.target_sample_rate)
+                'timestretch': lambda: TimeStretchAudiomentation(p=1, sample_rate=self.target_sample_rate, min_stretch_rate=0.7, max_stretch_rate=1.3),
+                'splice': lambda: SpliceOut(p=1, sample_rate=self.target_sample_rate, max_width=100),
+                'reverb' : lambda: ReverbAudiomentation(p=1, sample_rate=self.target_sample_rate,room_size = 1, wet_level = 1, dry_level = 1),
+                'chorus' : lambda: ChorusAudiomentation(p=1, sample_rate=self.target_sample_rate, mix = 1, rate_hz = 5, depth = 1),
+                'distortion' : lambda: DistortionAudiomentation(p=1, sample_rate=self.target_sample_rate, drive_db = 9),
+                'compression' : lambda: CompressorAudiomentation(p=1, sample_rate=self.target_sample_rate, threshold_db = -30, ratio = 5),
+                'reverse' : lambda: Reverse(p=1, sample_rate=self.target_sample_rate),
+                'bitcrush' : lambda: BitcrushAudiomentation(p=1, sample_rate=self.target_sample_rate, bit_depth = 4),
+                'mp3' : lambda: MP3CompressorAudiomentation(p=1, sample_rate=self.target_sample_rate, vbr_quality = 9)
             }
             ## for tiers 5 and + :
                 # 5: add time stretch (Implemented)

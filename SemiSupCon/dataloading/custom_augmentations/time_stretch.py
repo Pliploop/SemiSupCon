@@ -128,10 +128,10 @@ class TimeStretchAudiomentation(BaseWaveformTransform):
        
         new_audio = torch.zeros_like(samples)
         samples = librosa.effects.time_stretch(y = samples.cpu().numpy(), rate =  stretch_rate)
-        if samples.shape[1] > new_audio.shape[-1]:
-            new_audio[:,:samples.shape[1]] = torch.tensor(samples)
+        if samples.shape[-1] < new_audio.shape[-1]:
+            new_audio[...,:samples.shape[-1]] = torch.tensor(samples)
         else:
-            new_audio = torch.tensor(samples[:,:new_audio.shape[-1]])
+            new_audio = torch.tensor(samples[...,:new_audio.shape[-1]])
             
         return new_audio
        

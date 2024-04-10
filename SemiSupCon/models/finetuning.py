@@ -75,6 +75,8 @@ class FinetuneSemiSupCon(pl.LightningModule):
         device = next(self.semisupcon.parameters()).device
         
         if self.checkpoint_head:
+            print(f'Loading head weights from checkpoint {self.checkpoint_head}')
+            print(torch.load(self.checkpoint_head, map_location=device)['state_dict'].keys())
             self.load_state_dict(torch.load(self.checkpoint_head, map_location=device)['state_dict'], strict = False)
             print(f'Loaded head weights from checkpoint {self.checkpoint_head}')
             

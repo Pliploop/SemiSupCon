@@ -22,7 +22,11 @@ class LoggerSaveConfigCallback(SaveConfigCallback):
                 trainer.logger.experiment.config.update(config, allow_val_change=True)
                 
             if config['model']['checkpoint'] is None:
-                previous_experiment_name = 'from_scratch'
+                if config['model']['checkpoint_head'] is not None:
+                    previous_experiment_name = config['model']['checkpoint_head'].split('/')[-2].split('_')
+                    previous_experiment_name = '_'.join(previous_experiment_name[:4])
+                else:
+                    previous_experiment_name = 'from_scratch'
             else:
                 previous_experiment_name = config['model']['checkpoint'].split('/')[-2]
             if not config['test']:
@@ -56,7 +60,6 @@ class MyLightningCLI(LightningCLI):
         parser.add_argument("--resume_id", default=None)
         parser.add_argument('--test', default=False)
         parser.add_argument('--early_stopping_patience', default=5)
-        parser.add_argument('--project', default='SemiSupCon-finetuning')
 
 if __name__ == "__main__":
     
@@ -78,7 +81,7 @@ if __name__ == "__main__":
         
 
     if cli.config.log:
-        logger = WandbLogger(project=cli.config.project,id = cli.config.resume_id)
+        logger = WandbLogger(project="SemiSupCon-eval",id = cli.config.resume_id)
         experiment_name = logger.experiment.name+f"_finetune_{previous_experiment_name}_{cli.config['model']['task']}"
         ckpt_path = cli.config.ckpt_path
         if cli.config.test:

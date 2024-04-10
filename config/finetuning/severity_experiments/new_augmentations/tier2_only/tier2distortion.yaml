@@ -3,15 +3,15 @@ seed_everything: 123
 trainer:
   accelerator: auto
   strategy: auto
-  devices: [6]
+  devices: auto
   num_nodes: 1
   precision: null
   logger: null
   callbacks: null
   fast_dev_run: false
-  max_epochs: null
+  max_epochs: 100
   min_epochs: null
-  max_steps: 50000
+  max_steps: -1
   min_steps: null
   max_time: null
   limit_train_batches: null
@@ -29,7 +29,7 @@ trainer:
   accumulate_grad_batches: 1
   gradient_clip_val: null
   gradient_clip_algorithm: null
-  deterministic: true
+  deterministic: null
   benchmark: null
   inference_mode: true
   use_distributed_sampler: true
@@ -43,38 +43,46 @@ trainer:
 model:
   encoder: 
     class_path: SemiSupCon.models.encoders.samplecnn.SampleCNN
-  temperature: 0.1
+  freeze_encoder: true
+  mlp_head: true 
+  checkpoint: null 
+  checkpoint_head : null
+  task : mtat_top50
   optimizer:
     class_path: torch.optim.Adam
     init_args:
-      lr: 0.0001
+      lr: 0.0003
+      weight_decay: 0.000001
 data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
-  task: 'mtat_top50'
-  sl_task: 'mtat_top50'
-  ssl_task: 'fma'
+  ssl_task: null
+  sl_task: mtat_top50
   target_length: 2.7
   target_sample_rate: 22050
-  n_augmentations: 2
+  n_augmentations: 1
   transform: true
+  test_transform : true
   n_classes: 50
-  batch_size: 96
-  num_workers: 32
+  batch_size: 64
+  num_workers: 16
   val_split: 0.1
   supervised_data_p: 1
   intrabatch_supervised_p: 1
   use_test_set: true
   fully_supervised: true
+  severity_modifier: 2
   aug_list:
   - 'gain'
   - 'polarity_inversion'
   - 'add_colored_noise'
   - 'filtering'
-  # - 'pitch_shift'
+  - 'pitch_shift'
   - 'delay'
-  severity_modifier: 2
+  - 'distortion'
 log: false
 log_model: false
-ckpt_path: Checkpoints
+ckpt_path: Checkpoints-finetuning
 resume_id: null
 resume_from_checkpoint: null
+early_stopping_patience: 15
+test: true

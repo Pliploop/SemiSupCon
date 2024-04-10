@@ -51,7 +51,7 @@ model:
   optimizer:
     class_path: torch.optim.Adam
     init_args:
-      lr: 0.0003
+      lr: 0.0001
       weight_decay: 0.000001
 data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
@@ -61,7 +61,7 @@ data:
   target_sample_rate: 22050
   n_augmentations: 1
   transform: false
-  n_classes: 50
+  n_classes: 2
   batch_size: 64
   num_workers: 16
   val_split: 0.15
@@ -74,4 +74,4 @@ log_model: false
 ckpt_path: Checkpoints-finetuning
 resume_id: null
 resume_from_checkpoint: null
-early_stopping_patience: 50
+early_stopping_patience: 200
