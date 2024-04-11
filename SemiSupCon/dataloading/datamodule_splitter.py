@@ -1,6 +1,5 @@
 
 import os
-import pytorch_lightning as pl
 from torch.utils.data import random_split
 import pandas as pd
 import numpy as np
@@ -14,8 +13,6 @@ import pathlib
 import yaml
 from sklearn.model_selection import train_test_split
 
-from SemiSupCon.dataloading import *
-from SemiSupCon.dataloading.custom_augmentations import *
 
 
 def compute_checksum(path_or_bytes, algorithm="sha256", gunzip=False, chunk_size=4096):

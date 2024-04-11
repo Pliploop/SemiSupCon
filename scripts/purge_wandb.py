@@ -2,7 +2,7 @@ import os
 import sys
 import wandb
 
-def delete_folders(checkpoint_folders = ['Checkpoints'], wandb_projects = ['SemiSupCon']):
+def delete_folders(checkpoint_folders = ['Checkpoints','Checkpoints-finetuning'], wandb_projects = ['SemiSupCon','SemiSupCon-finetuning2','SemiSupCon-eval']):
     runs = []
     for project_name in wandb_projects:
         runs.extend(wandb.Api().runs(f'jul-guinot/{project_name}'))
@@ -15,7 +15,7 @@ def delete_folders(checkpoint_folders = ['Checkpoints'], wandb_projects = ['Semi
             if os.path.isdir(subdir_path):
                 subdir_name = os.path.basename(subdir_path)
                 if subdir_name not in run_names:
-                    os.system(f"rm -rf {subdir_path}")
+                    # os.system(f"rm -rf {subdir_path}")
                     print(f"Removed folder: {subdir_path}")  # Pretty print removed folder
                     
  

@@ -7,8 +7,11 @@ import torch
 
 def multilabel_metrics(logits, labels, idx2class, class_names, n_classes):
     preds = torch.sigmoid(logits)
+    
     aurocs = auroc(preds,labels,task = 'multilabel',num_labels = n_classes)
     ap_score = average_precision(preds,labels,task = 'multilabel',num_labels = n_classes)
+    
+    
     return {'auroc':aurocs,'ap':ap_score}
 
 def mtat_top50_metrics(logits, labels, idx2class, class_names, n_classes):

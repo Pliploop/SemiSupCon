@@ -56,6 +56,7 @@ class MyLightningCLI(LightningCLI):
         parser.add_argument("--resume_id", default=None)
         parser.add_argument('--test', default=False)
         parser.add_argument('--early_stopping_patience', default=5)
+        parser.add_argument('--project', default='SemiSupCon-finetuning')
 
 if __name__ == "__main__":
     
@@ -77,7 +78,7 @@ if __name__ == "__main__":
         
 
     if cli.config.log:
-        logger = WandbLogger(project="SemiSupCon-finetuning2",id = cli.config.resume_id)
+        logger = WandbLogger(project=cli.config.project,id = cli.config.resume_id)
         experiment_name = logger.experiment.name+f"_finetune_{previous_experiment_name}_{cli.config['model']['task']}"
         ckpt_path = cli.config.ckpt_path
         if cli.config.test:

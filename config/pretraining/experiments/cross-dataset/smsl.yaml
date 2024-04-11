@@ -51,7 +51,7 @@ model:
 data:
   data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
   task: 'mtat_top50'
-  sl_task: 'medleydb'
+  sl_task: 'mtat_top50'
   ssl_task: 'fma'
   target_length: 2.7
   target_sample_rate: 22050
@@ -62,15 +62,15 @@ data:
   num_workers: 32
   val_split: 0.1
   supervised_data_p: 1
-  intrabatch_supervised_p: 0.5
+  intrabatch_supervised_p: 1
   use_test_set: true
-  fully_supervised: false
+  fully_supervised: true
   aug_list:
   - 'gain'
   - 'polarity_inversion'
   - 'add_colored_noise'
   - 'filtering'
-  - 'pitch_shift'
+  # - 'pitch_shift'
   - 'delay'
   severity_modifier: 2
 log: false

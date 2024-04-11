@@ -61,8 +61,8 @@ data:
   batch_size: 96
   num_workers: 32
   val_split: 0.1
-  supervised_data_p: 1
-  intrabatch_supervised_p: 0.5
+  supervised_data_p: 0
+  intrabatch_supervised_p: 0
   fully_supervised: false
   use_test_set: true
   aug_list:
@@ -70,7 +70,7 @@ data:
   - 'polarity_inversion'
   - 'add_colored_noise'
   - 'filtering'
-  - 'pitch_shift'
+  # - 'pitch_shift'
   - 'delay'
   severity_modifier: 2
 log: false
