@@ -80,11 +80,11 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
-Checkpoints
+Checkpoints/
 results
 config.yaml
 checkpoints
-Checkpoints-finetuning
+Checkpoints-finetuning/
 
 # Jupyter Notebook
 .ipynb_checkpoints
