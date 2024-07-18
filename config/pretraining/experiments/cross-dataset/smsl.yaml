@@ -68,7 +68,7 @@ data:
   - 'polarity_inversion'
   - 'add_colored_noise'
   - 'filtering'
-  - 'pitch_shift'
+  # - 'pitch_shift'
   - 'delay'
   severity_modifier: 2
 log: false
