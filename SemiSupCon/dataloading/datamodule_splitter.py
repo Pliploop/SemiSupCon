@@ -78,11 +78,16 @@ class DataModuleSplitter:
     if supervised_data_p is 1, then all available supervised data is used. If it is 0, then no supervised data is used.
     if fully_supervised is True, then only supervised data is used (e.g supervised contrastive learning or finetuning).
     if use_test_set is false, then the test set is used as part of the training set.
+    
+    each task has a logic for how to load the data, and how to split it into train, val and test sets.
+    to implement a new supervised task, the logic must be implemented.
+    if ssl_task is None, data_dir will be used as a default data source.
+    
+    
     """
 
     def __init__(self,
-                 data_dir,
-                 task=None,
+                 data_dir = None,
                  ssl_task=None,
                  sl_task=None,
                  supervised_data_p=1,
@@ -90,10 +95,9 @@ class DataModuleSplitter:
                  test_split=0.1,
                  use_test_set=False,
                  fully_supervised=False,
-                 extension='wav'
+                 sl_kwargs = {}
                  ):
 
-        self.task = task
         self.ssl_task = ssl_task
         self.sl_task = sl_task
         self.data_dir = data_dir
@@ -106,16 +110,18 @@ class DataModuleSplitter:
             self.test_split = 0
 
         self.n_classes = 0
+        
+        self.sl_kwargs = sl_kwargs
 
         if self.ssl_task == self.sl_task:
             if self.ssl_task is None:
                 fetch_function = self.get_default_annotations
             else:
                 fetch_function = eval(f"self.get_{self.ssl_task}_annotations")
-            annotations, idx2class = fetch_function()
+            annotations, idx2class = fetch_function(**self.sl_kwargs)
             self.annotations = self.filter_supervised_annotations(
-                annotations, self.supervised_data_p)
-            self.annotations['task'] = self.ssl_task
+                annotations, self.supervised_data_p) # if the supervised data percentage is 0, then the annotations will be unsupervised
+            self.annotations['task'] = self.ssl_task 
 
         else:
             if self.ssl_task is None:
@@ -130,7 +136,7 @@ class DataModuleSplitter:
                     f"self.get_{self.sl_task}_annotations")
 
             ssl_annotations, _ = ssl_fetch_function()
-            sl_annotations, idx2class = sl_fetch_function()
+            sl_annotations, idx2class = sl_fetch_function(**self.sl_kwargs)
 
             ssl_annotations.loc[:, 'labels'] = None
             sl_annotations = self.filter_supervised_annotations(
@@ -154,31 +160,9 @@ class DataModuleSplitter:
         if self.fully_supervised:
             self.annotations = self.annotations[self.annotations['supervised'] == 1]
 
-    def get_annotations(self):
-        return self.fetch_function()
-
-    def get_fma_annotations(self):
-        # just because for some weird reason it takes forever to read the files using get default annotations
-        path = 'data/fma/fma_medium_wav.csv'
-        annotations = pd.read_csv(path)
-        annotations.loc[:, 'split'] = 'train'
-        annotations.loc[:, 'labels'] = None
-
-        annotations = annotations[['file_path']]
-
-        if self.val_split > 0:
-            train_len = int(len(annotations) * (1 - self.val_split))
-            train_annotations, val_annotations = random_split(
-                annotations, [train_len, len(annotations) - train_len])
-            train_annotations = annotations.iloc[train_annotations.indices]
-            val_annotations = annotations.iloc[val_annotations.indices]
-            train_annotations.loc[:, 'split'] = 'train'
-            val_annotations.loc[:, 'split'] = 'val'
-            annotations = pd.concat([train_annotations, val_annotations])
-
-        return annotations, None
 
     def filter_supervised_annotations(self, annotations, supervised_data_p, drop=False):
+        """ filters the supervised data according to the supervised_data_p parameter"""
         supervised_annotations = annotations[annotations.labels.notna()]
         unsupervised_annotations = annotations[annotations.labels.isna()]
 
@@ -197,9 +181,32 @@ class DataModuleSplitter:
             annotations = annotations[annotations['labels'].notna()]
 
         return annotations
+    
+    
+    def get_fma_annotations(self, csv_path = 'data/fma/fma_medium_wav.csv'):
+        # just because for some weird reason it takes forever to read the files using get default annotations
+        # csv_path = 'data/fma/fma_medium_wav.csv'
+        # WARNING: this loading function is specific to this project due to the way the data is stored. if you want to use this function, you need to change the paths in the csv file
+        annotations = pd.read_csv(csv_path)
+        annotations.loc[:, 'split'] = 'train'
+        annotations.loc[:, 'labels'] = None
 
-    def get_mtat_top50_annotations(self):
-        csv_path = '/import/c4dm-datasets/MagnaTagATune/annotations_final.csv'
+        annotations = annotations[['file_path']]
+
+        if self.val_split > 0:
+            train_len = int(len(annotations) * (1 - self.val_split))
+            train_annotations, val_annotations = random_split(
+                annotations, [train_len, len(annotations) - train_len])
+            train_annotations = annotations.iloc[train_annotations.indices]
+            val_annotations = annotations.iloc[val_annotations.indices]
+            train_annotations.loc[:, 'split'] = 'train'
+            val_annotations.loc[:, 'split'] = 'val'
+            annotations = pd.concat([train_annotations, val_annotations])
+
+        return annotations, None
+
+    def get_mtat_top50_annotations(self, csv_path = 'data/mtat/annotations_final.csv'):
+        # csv_path = '/import/c4dm-datasets/MagnaTagATune/annotations_final.csv'
         annotations = pd.read_csv(csv_path, sep='\t')
         labels = annotations.drop(columns=['mp3_path', 'clip_id'])
 
@@ -242,9 +249,9 @@ class DataModuleSplitter:
 
         return annotations, idx2class
 
-    def get_mtat_all_annotations(self):
+    def get_mtat_all_annotations(self, csv_path = 'data/mtat/annotations_final.csv'):
 
-        csv_path = '/import/c4dm-datasets/MagnaTagATune/annotations_final.csv'
+        # csv_path = '/import/c4dm-datasets/MagnaTagATune/annotations_final.csv'
         annotations = pd.read_csv(csv_path, sep='\t')
         labels = annotations.drop(columns=['mp3_path', 'clip_id'])
 
@@ -296,17 +303,18 @@ class DataModuleSplitter:
 
         return annotations, None
 
-    def get_gtzan_annotations(self):
-        audio_path = "/import/c4dm-datasets/gtzan_torchaudio/genres"
-        # annotations = pd.read_csv("data/gtzan_annotations.csv")
-        # read txt files into dataframes
-
+    def get_gtzan_annotations(self,
+                              audio_path = "/import/c4dm-datasets/gtzan_torchaudio/genres",
+                              train_annotations_path = "data/gtzan/train_filtered.txt",
+                              test_annotations_path = "data/gtzan/test_filtered.txt",
+                              val_annotations_path = "data/gtzan/val_filtered.txt"
+                              ):
         train_annotations = pd.read_csv(
-            "data/gtzan/train_filtered.txt", sep=' ', header=None)
+            train_annotations_path, sep=' ', header=None)
         val_annotations = pd.read_csv(
-            "data/gtzan/val_filtered.txt", sep=' ', header=None)
+            val_annotations_path, sep=' ', header=None)
         test_annotations = pd.read_csv(
-            "data/gtzan/test_filtered.txt", sep=' ', header=None)
+            test_annotations_path, sep=' ', header=None)
 
         train_annotations['split'] = 'train'
         val_annotations['split'] = 'val'
@@ -332,9 +340,14 @@ class DataModuleSplitter:
 
         return annotations, idx2class
 
-    def get_giantsteps_annotations(self):
-        test_audio_path = "/homes/jpmg86/giantsteps-key-dataset/audio"
-        test_annotations_path = "/homes/jpmg86/giantsteps-key-dataset/annotations/key"
+    def get_giantsteps_annotations(self,
+                                   test_audio_path = "/import/research_c4dm/jpmg86/giantsteps-key-dataset/audio",
+                                   test_annotations_path = "/import/research_c4dm/jpmg86/giantsteps-key-dataset/annotations/key",
+                                   train_audio_path = "/import/research_c4dm/jpmg86/giantsteps-mtg-key-dataset/audio",
+                                   train_annotations_txt = "/import/research_c4dm/jpmg86/giantsteps-mtg-key-dataset/annotations/annotations.txt"
+                                   ):
+        # test_audio_path = "/import/research_c4dm/jpmg86/giantsteps-key-dataset/audio"
+        # test_annotations_path = "/import/research_c4dm/jpmg86/giantsteps-key-dataset/annotations/key"
 
         # every file in the annotations path is of shape {filename}.LOFI.key
         # and when read contains the key as a string.
@@ -359,8 +372,8 @@ class DataModuleSplitter:
         #                                         1-self.val_split-self.val_split])
         test_classes = test_annotations['key'].unique()
 
-        train_audio_path = "/homes/jpmg86/giantsteps-mtg-key-dataset/audio"
-        train_annotations_txt = '/homes/jpmg86/giantsteps-mtg-key-dataset/annotations/annotations.txt'
+        # train_audio_path = "/import/research_c4dm/jpmg86/giantsteps-mtg-key-dataset/audio"
+        # train_annotations_txt = "/import/research_c4dm/jpmg86/giantsteps-mtg-key-dataset/annotations/annotations.txt"
 
         train_annotations = pd.read_csv(train_annotations_txt, sep='\t')
         train_annotations = train_annotations.iloc[:, :3]
@@ -408,8 +421,8 @@ class DataModuleSplitter:
 
         return annotations, idx2class
 
-    def get_emomusic_annotations(self):
-        d = "/import/c4dm-datasets/emoMusic45s"
+    def get_emomusic_annotations(self, data_dir):
+        # d = "/import/c4dm-datasets/emoMusic45s"
 
         # prase annotations CSV
         audio_uids = set()
@@ -422,7 +435,7 @@ class DataModuleSplitter:
             "arousal_cont_average",
             "arousal_cont_std",
         ]:
-            with open(pathlib.Path(d, f"{stem}.csv"), "r") as f:
+            with open(pathlib.Path(data_dir, f"{stem}.csv"), "r") as f:
                 for row in csv.DictReader(f):
                     row = {k: v.strip() for k, v in row.items()}
                     uid = str(int(row["song_id"])).zfill(4)
@@ -506,7 +519,7 @@ class DataModuleSplitter:
         for uid, metadata in uid_to_metadata.items():
             # Yield result
             split = metadata["split"]
-            mp3_path = pathlib.Path(d, "clips_45seconds", f"{int(uid)}.mp3")
+            mp3_path = pathlib.Path(data_dir, "clips_45seconds", f"{int(uid)}.mp3")
             labels = metadata["y"]
 
             result = {
@@ -523,26 +536,26 @@ class DataModuleSplitter:
 
         return df, None
 
-    def get_nsynth_instr_family_annotations(self):
-        return self.get_nsynth_annotations('instrument_family')
+    def get_nsynth_instr_family_annotations(self, path_dir = '/import/c4dm-datasets/nsynth/nsynth'):
+        return self.get_nsynth_annotations('instrument_family', path_dir)
 
-    def get_nsynth_instr_annotations(self):
-        return self.get_nsynth_annotations('instrument')
+    def get_nsynth_instr_annotations(self, path_dir = '/import/c4dm-datasets/nsynth/nsynth'):
+        return self.get_nsynth_annotations('instrument',path_dir)
 
-    def get_nsynth_pitch_annotations(self):
-        annotations, idx2class = self.get_nsynth_annotations('pitch')
+    def get_nsynth_pitch_annotations(self, path_dir = '/import/c4dm-datasets/nsynth/nsynth'):
+        annotations, idx2class = self.get_nsynth_annotations('pitch', path_dir)
         idx2class = {i: librosa.midi_to_note(c) for i, c in idx2class.items()}
         return annotations, idx2class
 
-    def get_nsynth_qualities_annotations(self):
-        annotations = self.get_nsynth_annotations('instrument_family')
+    def get_nsynth_qualities_annotations(self, path_dir = '/import/c4dm-datasets/nsynth/nsynth'):
+        annotations = self.get_nsynth_annotations('instrument_family', path_dir)
         annotations['labels'] = annotations["qualities"]
         self.n_classes = len(annotations['labels'][0])
         return annotations
 
-    def get_nsynth_annotations(self, class_name):
+    def get_nsynth_annotations(self, class_name, path_dir = '/import/c4dm-datasets/nsynth/nsynth'):
         all_data = {}
-        path_dir = '/import/c4dm-datasets/nsynth/nsynth'
+        # path_dir = '/import/c4dm-datasets/nsynth/nsynth'
         for split in 'train', 'valid', 'test':
             path = os.path.join(path_dir+'-'+split, 'examples.json')
             with open(path, 'r') as f:
@@ -560,10 +573,7 @@ class DataModuleSplitter:
         annotations['split'] = annotations['split'].apply(
             lambda x: 'train' if x == 'train' else 'val' if x == 'valid' else 'test')
 
-        # get the number of classes for column "instrument_family"
         self.n_classes = len(annotations[class_name].unique())
-        # pretty print the number of classes
-        # add 'labels' to the dataframe as a one-hot of classes to int
 
         class2idx = {c: i for i, c in enumerate(
             annotations[class_name].unique())}
@@ -576,11 +586,8 @@ class DataModuleSplitter:
 
         return annotations, idx2class
 
-    def get_vocalset_singer_annotations(self):
+    def get_vocalset_singer_annotations(self, data_dir = '/import/c4dm-datasets/VocalSet1-2'):
 
-        data_dir = '/import/c4dm-datasets/VocalSet1-2'
-
-        # annotations = pd.DataFrame(columns=['file_path', 'labels', 'split'])
         annotations = []
 
         for root, dirs, files in os.walk(os.path.join(data_dir, 'data_by_singer')):
@@ -617,8 +624,8 @@ class DataModuleSplitter:
 
         return annotations, idx2class
 
-    def get_vocalset_technique_annotations(self):
-        data_dir = '/import/c4dm-datasets/VocalSet1-2'
+    def get_vocalset_technique_annotations(self, data_dir = '/import/c4dm-datasets/VocalSet1-2'):
+        # data_dir = '/import/c4dm-datasets/VocalSet1-2'
         train_singers = pd.read_csv(os.path.join(
             data_dir, 'train_singers_technique.txt'), header=None)
         test_singers = pd.read_csv(os.path.join(
@@ -717,36 +724,49 @@ class DataModuleSplitter:
 
         return annotations, idx2class
 
-    def get_mtg_top50_annotations(self):
+    def get_mtg_top50_annotations(self, 
+                                  path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_top50tags-split.tsv",
+                                  audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
+                                  ):
 
-        path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_top50tags-split.tsv"
-        audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
-
-        return self.get_mtg_annotations(path, audio_path)
-
-    def get_mtg_instr_annotations(self):
-
-        path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_instrument-split.tsv"
-        audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
+        # path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_top50tags-split.tsv"
+        # audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
 
         return self.get_mtg_annotations(path, audio_path)
 
-    def get_mtg_genre_annotations(self):
+    def get_mtg_instr_annotations(self,
+                                  path = '/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_instrument-split.tsv',
+                                  audio_path = '/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3'):
 
-        path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_genre-split.tsv"
-        audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
-
-        return self.get_mtg_annotations(path, audio_path)
-
-    def get_mtg_mood_annotations(self):
-
-        path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_moodtheme-split.tsv"
-        audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
+        # path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_instrument-split.tsv"
+        # audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
 
         return self.get_mtg_annotations(path, audio_path)
 
-    def get_medleydb_annotations(self):
-        annotations, _ = self.get_medleydb_both_annotations()
+    def get_mtg_genre_annotations(self, 
+                                  path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_genre-split.tsv",
+                                  audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"):
+
+        # path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_genre-split.tsv"
+        # audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
+
+        return self.get_mtg_annotations(path, audio_path)
+
+    def get_mtg_mood_annotations(self,
+                                 path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_moodtheme-split.tsv",
+                                 audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"):
+
+        # path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_moodtheme-split.tsv"
+        # audio_path = "/import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3"
+
+        return self.get_mtg_annotations(path, audio_path)
+
+    def get_medleydb_annotations(self,
+                                 medleydb_path = "data/medleydb",
+                                 medleydb_audio_path = '/import/c4dm-datasets/MedleyDB_V1/V1',
+                                 medleydb_audio_path_v2 = '/import/c4dm-datasets/MedleyDB_V2/V2'):
+        annotations, _ = self.get_medleydb_both_annotations(
+            medleydb_path, medleydb_audio_path, medleydb_audio_path_v2)
 
         train, test = train_test_split(
             annotations, test_size=self.val_split, stratify=annotations['stem_instrument'])
@@ -775,9 +795,13 @@ class DataModuleSplitter:
 
         return annotations, idx2class
 
-    def get_medleydb_raw_annotations(self):
+    def get_medleydb_raw_annotations(self, 
+                                 medleydb_path = "data/medleydb",
+                                 medleydb_audio_path = '/import/c4dm-datasets/MedleyDB_V1/V1',
+                                 medleydb_audio_path_v2 = '/import/c4dm-datasets/MedleyDB_V2/V2'):
 
-        _, annotations = self.get_medleydb_both_annotations()
+        _, annotations = self.get_medleydb_both_annotations(
+            medleydb_path, medleydb_audio_path, medleydb_audio_path_v2)
 
         train, test = train_test_split(
             annotations, test_size=self.val_split, stratify=annotations['raw_instrument'])
@@ -806,11 +830,11 @@ class DataModuleSplitter:
 
         return annotations, idx2class
 
-    def get_medleydb_both_annotations(self):
+    def get_medleydb_both_annotations(self, medleydb_path, medleydb_audio_path, medleydb_audio_path_v2):
 
-        medleydb_path = "data/medleydb"
-        medleydb_audio_path = '/import/c4dm-datasets/MedleyDB_V1/V1'
-        medleydb_audio_path_v2 = '/import/c4dm-datasets/MedleyDB_V2/V2'
+        # medleydb_path = "data/medleydb"
+        # medleydb_audio_path = '/import/c4dm-datasets/MedleyDB_V1/V1'
+        # medleydb_audio_path_v2 = '/import/c4dm-datasets/MedleyDB_V2/V2'
 
         # get all the folder names in both audio paths with root
         all_paths_1 = []

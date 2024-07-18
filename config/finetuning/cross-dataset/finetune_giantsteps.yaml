@@ -69,6 +69,11 @@ data:
   intrabatch_supervised_p: 1
   use_test_set: true
   fully_supervised: true
+  sl_kwargs:
+    test_audio_path : /import/research_c4dm/jpmg86/giantsteps-key-dataset/audio
+    test_annotations_path : "/import/research_c4dm/jpmg86/giantsteps-key-dataset/annotations/key"
+    train_audio_path : /import/research_c4dm/jpmg86/giantsteps-mtg-key-dataset/audio
+    train_annotations_txt : "/import/research_c4dm/jpmg86/giantsteps-mtg-key-dataset/annotations/annotations.txt"
 log: false
 log_model: false
 ckpt_path: Checkpoints-finetuning

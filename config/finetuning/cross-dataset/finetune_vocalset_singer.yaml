@@ -69,6 +69,8 @@ data:
   intrabatch_supervised_p: 1
   use_test_set: true
   fully_supervised: true
+  sl_kwargs: 
+    data_dir: '/import/c4dm-datasets/VocalSet1-2'
 log: false
 log_model: false
 ckpt_path: Checkpoints-finetuning
