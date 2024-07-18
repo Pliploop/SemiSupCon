@@ -67,7 +67,9 @@ class MixedDataModule(pl.LightningDataModule):
         if self.fully_supervised:
             self.supervised_dataset_percentage = 1
             self.in_batch_supervised_percentage = 1
-        
+        #Get annotations based on task
+        #df with [filepath,label]
+        #df also returns the split for each file path. 
         self.splitter = DataModuleSplitter(self.data_dir, self.task, self.ssl_task, self.sl_task, self.supervised_dataset_percentage, self.val_split, self.test_split, self.use_test_set, self.fully_supervised)
         self.annotations = self.splitter.annotations
         self.n_classes = self.splitter.n_classes
