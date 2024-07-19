@@ -1,5 +1,5 @@
 
-from SemiSupCon.models.semisupcon import SemiSupCon
+from SemiSupCon.models.semisupcon import SemiSupCon, LightningSemiSupCon
 from SemiSupCon.dataloading.datamodules import MixedDataModule
 from pytorch_lightning.cli import LightningCLI
 from pytorch_lightning.cli import SaveConfigCallback
@@ -60,7 +60,7 @@ class MyLightningCLI(LightningCLI):
 
 if __name__ == "__main__":
 
-    cli = MyLightningCLI(model_class=SemiSupCon, datamodule_class=MixedDataModule, seed_everything_default=123,
+    cli = MyLightningCLI(model_class=LightningSemiSupCon, datamodule_class=MixedDataModule, seed_everything_default=123,
                          run=False, save_config_callback=LoggerSaveConfigCallback, save_config_kwargs={"overwrite": True},)
     
     cli.instantiate_classes()

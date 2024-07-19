@@ -69,6 +69,9 @@ data:
   intrabatch_supervised_p: 1
   use_test_set: true
   fully_supervised: true
+  sl_kwargs: 
+    path: /import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/data/splits/split-0/autotagging_instrument-split.tsv
+    audio_path: /import/c4dm-datasets/mtg-jamendo-raw/mtg-jamendo-dataset/mp3
 log: false
 log_model: false
 ckpt_path: Checkpoints-finetuning

@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.ipynb
+!case_study.ipynb
+
+
 
 data/*
 
@@ -77,11 +80,11 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
-Checkpoints
-Checkpoints-finetuning
+Checkpoints/
 results
 config.yaml
 checkpoints
+Checkpoints-finetuning/
 
 # Jupyter Notebook
 .ipynb_checkpoints

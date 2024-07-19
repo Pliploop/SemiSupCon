@@ -50,9 +50,6 @@ model:
     init_args:
       lr: 0.0001
 data:
-#if no split, just provide data dir, logic would take care (only for SSL)
-  data_dir: '/import/research_c4dm/JulienMarcoChrisRMRI/MTAT_wav'
-  #Implement own loading function (because how the directory is organised) 
   sl_task: 'mtat_top50'
   #none if no split
   ssl_task: 'fma'
@@ -77,9 +74,11 @@ data:
   - 'polarity_inversion'
   - 'add_colored_noise'
   - 'filtering'
-  # - 'pitch_shift'
+  - 'pitch_shift'
   - 'delay'
   severity_modifier: 2
+  sl_kwargs:
+    csv_path : /import/c4dm-datasets/MagnaTagATune/annotations_final.csv
 log: false
 log_model: false
 ckpt_path: Checkpoints
