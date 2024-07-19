@@ -181,10 +181,6 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
         loss = self.loss_fn(logits,labels.float())
         
-        #get metrics
-        # preds = torch.sigmoid(logits)
-        # aurocs = auroc(preds,labels,task = 'multilabel',num_labels = self.n_classes)
-        # ap_score = average_precision(preds,labels,task = 'multilabel',num_labels = self.n_classes)
         
         train_metrics = self.get_metrics(logits,labels,self.idx2class,self.class_names,self.n_classes)
         
