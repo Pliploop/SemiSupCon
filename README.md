@@ -10,6 +10,8 @@
 ![SemiSupCon](https://github.com/spijkervet/clmr/actions/workflows/clmr.yml/badge.svg)
 [![arXiv](https://img.shields.io/badge/arXiv-2208.12208-<COLOR>.svg)]()
 
+</div>
+
 Official Pytorch implementation of the paper [Semi-Supervised Contrastive Learning of Musical Representations](), By [Julien Guinot](), [Elio Quinton]() and [Gyorgy Fazekas](). Accepted and to be published at [ISMIR 2024]() in San Francisco.
 
 ***
