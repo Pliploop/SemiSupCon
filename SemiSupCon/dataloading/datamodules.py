@@ -1,10 +1,5 @@
-## boilerplate code for a pytorchlightning datamodule please
 import pytorch_lightning as pl
 from torch_audiomentations import *
-
-from SemiSupCon.dataloading import *
-
-
 from SemiSupCon.dataloading import *
 from SemiSupCon.dataloading.custom_augmentations import *
 
@@ -12,40 +7,54 @@ from SemiSupCon.dataloading.custom_augmentations import *
     
 class MixedDataModule(pl.LightningDataModule):
     
+    """
+    
+    Mixed Data module class that returns a semi-supervised dataloader.
+    The dataloader is a mix of supervised and self-supervised data.
+    with proportion of supervised data in a batch determined by intrabatch_supervised_p.
+    
+    
+    """
+    
     def __init__(self,
-                 data_dir,
-                 task = None,
-                 sl_task = None,
-                 ssl_task = None,
-                 target_length = 2.7,
-                 target_sample_rate = 22050,
-                 n_augmentations= 2,
+                 data_dir = None, # data directory for ssl task : can be None if ssl_task is not None
+                 sl_task = None, # supervised learning task, with logic in DatamoduleSplitter class
+                 ssl_task = None, # self-supervised learning task, with logic in DatamoduleSplitter class. Can be None if data_dir is not None
+                 target_length = 2.7, # in seconds
+                 target_sample_rate = 22050, # sr to resample to when loading (on the fly)
+                 n_augmentations= 2, # number of augmentations. 2 by default. Samples will be loaded as (batch, n_augmentations, target_samples)
                  transform = True,
-                 n_classes = 50,
                  batch_size = 32,
                  num_workers = 16,
-                 val_split = 0.1,
-                 test_split = 0,
-                 use_test_set = False,
-                 supervised_data_p = 1,
-                 fully_supervised = False,
-                 intrabatch_supervised_p = 0.5,
-                 severity_modifier = 2, # scales from 0 to 5
+                 val_split = 0.1, # if validation split is not determined in logic in DatamoduleSplitter class
+                 test_split = 0, # if test set split is not determined in logic in DatamoduleSplitter class
+                 use_test_set = False, # whether to use the test set or during training (leave False by default)
+                 supervised_data_p = 1, # proportion of supervised training dataset to use for training
+                 fully_supervised = False, # whether or not to use the fully supervised setting (and return labels)
+                 intrabatch_supervised_p = 0.5, # proportion of supervised data in a batch
+                 severity_modifier = 2, # scales from 0 to 5, only applies if augmentations are included. leave at 2 by default
                  test_transform = False,
-                 aug_list = []) -> None:
+                 aug_list = [],
+                 sl_kwargs = {} # additional keyword arguments for supervised dataloading
+                 ) -> None:
+    
         
         super().__init__()
         
         self.data_dir = data_dir
-        self.task = task
         self.sl_task = sl_task
         self.ssl_task = ssl_task
+        
+        if self.data_dir is None and self.ssl_task is None:
+            assert self.sl_task is not None, "Either data_dir or ssl_task must be provided if sl_task is not None"
+        if self.sl_task is None:
+            assert self.data_dir is not None or self.ssl_task is not None, "Either data_dir or ssl_task must be provided if sl_task is None"
+        
         self.target_length = target_length
         self.target_sample_rate = target_sample_rate
         self.n_augmentations = n_augmentations
         self.target_samples = int(self.target_length * self.target_sample_rate)
         self.global_target_samples = self.target_samples * self.n_augmentations
-        self.n_classes = n_classes
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.val_split = val_split
@@ -58,33 +67,41 @@ class MixedDataModule(pl.LightningDataModule):
         self.aug_list = aug_list
         self.test_transform = test_transform
         
-        #build a dict with augmentation name and the corresponding function with parameters as specified below
-        self.severity_modifier = severity_modifier/2
+        self.severity_modifier = severity_modifier/2 # scale back to between 0 (unmodified) and 2.5 (max severity) with 1 being "normal severity"
         self.get_aug_chain()
         
-        self.self_supervised_augmentations = self.supervised_augmentations
+        self.self_supervised_augmentations = self.supervised_augmentations # by default augmentations are the same but this can be changed
         
         if self.fully_supervised:
             self.supervised_dataset_percentage = 1
             self.in_batch_supervised_percentage = 1
         
-        self.splitter = DataModuleSplitter(self.data_dir, self.task, self.ssl_task, self.sl_task, self.supervised_dataset_percentage, self.val_split, self.test_split, self.use_test_set, self.fully_supervised)
+        self.splitter = DataModuleSplitter(
+            data_dir=self.data_dir,
+            ssl_task=self.ssl_task,
+            sl_task=self.sl_task,
+            supervised_data_p=self.supervised_dataset_percentage,
+            val_split=self.val_split,
+            test_split=self.test_split,
+            use_test_set=self.use_test_set,
+            fully_supervised=self.fully_supervised,
+            sl_kwargs=sl_kwargs
+            ) # annotations are retrieved at initialization
         self.annotations = self.splitter.annotations
-        self.n_classes = self.splitter.n_classes
+        self.n_classes = self.splitter.n_classes # n_classes are determined by logic in splitter, required for supervised dataloading
         if self.splitter.idx2class is not None:
-            self.idx2class = self.splitter.idx2class
+            self.idx2class = self.splitter.idx2class #idx2class is determined by logic in splitter, required for supervised dataloading
             self.class_names = list(self.idx2class.values())
         else:
             self.idx2class = None
             self.class_names = None
         
         print(self.annotations.groupby('split').count())
-        print("task: ", self.task)
         print("n_classes: ", self.n_classes)
         
     def get_aug_chain(self):
         
-        if self.severity_modifier > 0:
+        if self.severity_modifier > 0: # if severity modifier is 0, no augmentations are applied
         
             self.augmentations = {
                 'gain': lambda: Gain(min_gain_in_db=-15.0 * self.severity_modifier, max_gain_in_db=5.0 * self.severity_modifier, p=min(0.7,0.4* self.severity_modifier), sample_rate=self.target_sample_rate),
@@ -108,17 +125,7 @@ class MixedDataModule(pl.LightningDataModule):
                 'bitcrush' : lambda: BitcrushAudiomentation(p=1, sample_rate=self.target_sample_rate, bit_depth = 4),
                 'mp3' : lambda: MP3CompressorAudiomentation(p=1, sample_rate=self.target_sample_rate, vbr_quality = 9)
             }
-            ## for tiers 5 and + :
-                # 5: add time stretch (Implemented)
-                # 6 splicing from torch audiomentations (From AudioMentations)
-                # 7 : add reverb, chorus
-                # 8 : and distortion from spotify pedalboard
-                # 9 : add compression and reversing
-                # 10 : add bitcrushing and mp3 compression
-                
-                # all at 0.3 probability, default parameters : mostly to see out of distribution performance
             
-            # build an augmentation pipeline with the above augmentations if they are in self.aug_list
             self.supervised_augmentations = Compose(
                 [
                     self.augmentations[aug]() for aug in self.aug_list

@@ -69,6 +69,11 @@ data:
   intrabatch_supervised_p: 1
   use_test_set: true
   fully_supervised: true
+  sl_kwargs:
+    audio_path: /import/c4dm-datasets/gtzan_torchaudio/genres
+    train_annotations_path : data/gtzan/train_filtered.txt
+    val_annotations_path : data/gtzan/val_filtered.txt
+    test_annotations_path : data/gtzan/test_filtered.txt
 log: false
 log_model: false
 ckpt_path: Checkpoints-finetuning

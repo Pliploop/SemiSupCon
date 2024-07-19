@@ -62,6 +62,8 @@ data:
   intrabatch_supervised_p: 1
   fully_supervised: true
   use_test_set: true
+  sl_kwargs:
+    csv_path : /import/c4dm-datasets/MagnaTagATune/annotations_final.csv
 log: false
 log_model: false
 ckpt_path: Checkpoints

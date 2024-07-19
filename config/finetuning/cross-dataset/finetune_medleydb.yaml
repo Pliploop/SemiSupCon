@@ -69,6 +69,10 @@ data:
   intrabatch_supervised_p: 1
   use_test_set: true
   fully_supervised: true
+  sl_kwargs:
+    medleydb_path : data/medleydb
+    medleydb_audio_path: /import/c4dm-datasets/MedleyDB_V1/V1
+    medleydb_audio_path_v2: /import/c4dm-datasets/MedleyDB_V2/V2
 log: false
 log_model: false
 ckpt_path: Checkpoints-finetuning

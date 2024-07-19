@@ -71,6 +71,8 @@ data:
   - 'pitch_shift'
   - 'delay'
   severity_modifier: 2
+  sl_kwargs:
+    csv_path : /import/c4dm-datasets/MagnaTagATune/annotations_final.csv
 log: false
 log_model: false
 ckpt_path: Checkpoints
