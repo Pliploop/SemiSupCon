@@ -73,7 +73,11 @@ python pretrain.py --config config_file_path (--trainer.max_steps=100000 --data.
 
 when running an experiment, the config arguments `--data.ssl_task` and `--data.sl_task` are essential, and provide information on what data to use for self-supervised and supervised dataloading.
 
-all `sl_tasks` must be named as their name will determine the dataloading logic used in the `SemiSupCon/dataloading/datamodule_splitter.py` file. naming an `ssl_task` is optional (e.g. a specific train_test_val split is required), but all named tasks must have a logic implemented into `SemiSupCon/dataloading/datamodule_splitter.py`. If `None` is provided for `sl_task`, the training will be self-supervised. If `None` is provided for `ssl_task`, the datamodule will look to `--data.data_dir` for a data source folder and split it using `--data.val_split`. If none is provided, training will be fully-supervised. If neither `sl_task`,`ssl_task`, nor `data_dir` are provided, the training will not be able to run.
+all `sl_tasks` must be named as their name will determine the dataloading logic used in the `dataloading/datamodule_splitter.py` file. naming an `ssl_task` is optional (e.g. a specific train_test_val split is required), but all named tasks must have a logic implemented into `SemiSupCon/dataloading/datamodule_splitter.py`.
+
+If `None` is provided for `sl_task`, the training will be self-supervised. If `None` is provided for `ssl_task`, the datamodule will look to `--data.data_dir` for a data source folder and split it using `--data.val_split`. If none is provided, training will be fully-supervised. 
+
+> If neither `sl_task`,`ssl_task`, nor `data_dir` are provided, the training will not be able to run.
 
 Additional flags exist to toggle fully-supervised training even with an ssl directory or task provided. switch `--data.fully_supervised` to True to toggle this behaviour even when ssl data is provided:
 
