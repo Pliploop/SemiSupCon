@@ -7,7 +7,6 @@
 [Gyorgy Fazekas](http://www.eecs.qmul.ac.uk/~gyorgyf/about.html)<sup>1</sup> <br>
 <sup>1</sup>  Queen Mary University of London, <sup>2</sup>  Universal Music Group
 
-![SemiSupCon](https://github.com/spijkervet/clmr/actions/workflows/clmr.yml/badge.svg)
 [![arXiv](https://img.shields.io/badge/arXiv-2208.12208-<COLOR>.svg)]()
 
 </div>
@@ -25,7 +24,7 @@ Briefly, the contributions of this work are the following:
 -  We propose a representation learning framework with low-data regime potential and higher robustness to data corruption.
 
 <div align="center">
-  <img width="50%" alt="SemiSupCon" src="https://github.com/Pliploop/SemiSupCon/blob/main/media/SMSL_Horizontal.png?raw=true">
+  <img width="100%" alt="SemiSupCon" src="https://github.com/Pliploop/SemiSupCon/blob/main/media/SMSL_Horizontal.png?raw=true">
 </div>
 <div align="center">
   An illustration of SemiSupCon. Labels augment a target contrastive matrix which guides the learned representation towards a target similarity metric.
