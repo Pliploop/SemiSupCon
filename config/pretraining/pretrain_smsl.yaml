@@ -1,3 +1,4 @@
+
 # pytorch_lightning==2.1.0
 seed_everything: 123
 trainer:
@@ -50,6 +51,7 @@ model:
       lr: 0.0001
 data:
   sl_task: 'mtat_top50'
+  #none if no split
   ssl_task: 'fma'
   target_length: 2.7
   target_sample_rate: 22050
@@ -59,10 +61,14 @@ data:
   batch_size: 96
   num_workers: 32
   val_split: 0.1
+  #proportion of supervised data you use
   supervised_data_p: 0
+  #percentage of each batch that will be unlabelled/labelled - between 0 to 1 - default could be 0.5
   intrabatch_supervised_p: 0
+  #set to True if fully supervised
   fully_supervised: false
   use_test_set: true
+  #leave the list empty if you dont need it
   aug_list:
   - 'gain'
   - 'polarity_inversion'
