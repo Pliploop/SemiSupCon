@@ -114,7 +114,18 @@ class FinetuneSemiSupCon(pl.LightningModule):
     def load_head_weights_from_checkpoint(self,checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
         self.load_state_dict(checkpoint['state_dict'], strict = False)
+    
+    def load_checkpoint(self,checkpoint_path):
+        # get the device of the model
+        device = next(self.parameters()).device
+        checkpoint = torch.load(checkpoint_path,map_location=device)
+        self.load_state_dict(checkpoint['state_dict'], strict = True)
         
+    def freeze(self) -> None:
+        for param in self.parameters():
+            param.requires_grad = False
+        self.eval()
+    
     def forward(self,x):
         
         if isinstance(x,dict):
@@ -170,10 +181,6 @@ class FinetuneSemiSupCon(pl.LightningModule):
         
         loss = self.loss_fn(logits,labels.float())
         
-        #get metrics
-        # preds = torch.sigmoid(logits)
-        # aurocs = auroc(preds,labels,task = 'multilabel',num_labels = self.n_classes)
-        # ap_score = average_precision(preds,labels,task = 'multilabel',num_labels = self.n_classes)
         
         train_metrics = self.get_metrics(logits,labels,self.idx2class,self.class_names,self.n_classes)
         
@@ -315,5 +322,3 @@ class FinetuneSemiSupCon(pl.LightningModule):
             optimizer = self.optimizer(self.parameters())
             
         return optimizer
-    
-        
