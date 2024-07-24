@@ -7,7 +7,7 @@
 [Gyorgy Fazekas](http://www.eecs.qmul.ac.uk/~gyorgyf/about.html)<sup>1</sup> <br>
 <sup>1</sup>  Queen Mary University of London, <sup>2</sup>  Universal Music Group
 
-[![arXiv](https://img.shields.io/badge/arXiv-2208.12208-<COLOR>.svg)]()
+[![arXiv](https://img.shields.io/badge/arXiv-2208.12208-<COLOR>.svg)](https://arxiv.org/abs/2407.13840)
 
 </div>
 
